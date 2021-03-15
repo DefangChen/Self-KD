@@ -1,7 +1,40 @@
 import torch.nn as nn
 import torch.nn.functional as F
 import logging
+import torch
 
+
+class RunningAverage:
+    def __init__(self):
+        self.steps = 0
+        self.total = 0
+
+    def update(self, val):
+        self.total += val
+        self.steps += 1
+
+    def value(self):
+        return self.total / float(self.steps)
+
+# 用在be your own teacher当中
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.sum += val
+        self.count += n
+        self.avg = self.sum / self.count
+
+    def value(self):
+        return self.avg
 
 def set_logger(log_path):
     """Set the logger to log info in terminal and file `log_path`.
@@ -47,19 +80,51 @@ def accuracy(output, target, topk=(1,)):
     return res
 
 
+# 用在ban当中
 def kd_loss(outputs, labels, teacher_outputs, alpha=0.2, T=20):
-    KD_loss = nn.KLDivLoss()(F.log_softmax(outputs / T, dim=1), F.softmax(teacher_outputs / T, dim=1)) * alpha + F.cross_entropy(outputs, labels) * (1. - alpha)
+    KD_loss = nn.KLDivLoss()(F.log_softmax(outputs / T, dim=1),
+                             F.softmax(teacher_outputs / T, dim=1)) * alpha + F.cross_entropy(outputs, labels) * (
+                      1. - alpha)
     return KD_loss
 
 
-class RunningAverage:
-    def __init__(self):
-        self.steps = 0
-        self.total = 0
+# 用在be your own teacher当中
+def kd_loss_function(output, target_output, args):
+    """Compute kd loss"""
+    """
+    para: output: middle ouptput logits.
+    para: target_output: final output has divided by temperature and softmax.
+    """
+    output = output / args.temperature
+    output_log_softmax = torch.log_softmax(output, dim=1)
+    loss_kd = -torch.mean(torch.sum(output_log_softmax * target_output, dim=1))  # 用soft交叉熵代替KL散度
+    return loss_kd
 
-    def update(self, val):
-        self.total += val
-        self.steps += 1
 
-    def value(self):
-        return self.total / float(self.steps)
+# 用在be your own teacher当中
+def feature_loss_function(fea, target_fea):
+    # 如果feature小于0 则将这个位置的loss记为0
+    loss = (fea - target_fea) ** 2 * ((fea > 0) | (target_fea > 0)).float()
+    return torch.abs(loss).sum()
+
+
+# 用在be your own teacher当中
+def adjust_learning_rate(args, optimizer, epoch):
+    if args.warm_up and (epoch < 1):
+        lr = 0.01
+    elif 75 <= epoch < 130:
+        lr = args.lr * (args.step_ratio ** 1)
+    elif 130 <= epoch < 180:
+        lr = args.lr * (args.step_ratio ** 2)
+    elif epoch >= 180:
+        lr = args.lr * (args.step_ratio ** 3)
+    else:
+        lr = args.lr
+
+    logging.info('Epoch [{}] learning rate = {}'.format(epoch, lr))
+
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
+
+

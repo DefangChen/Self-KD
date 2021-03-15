@@ -232,8 +232,8 @@ if __name__ == '__main__':
         logging.info('Total params: %.2fM' % num_params)
 
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, nesterov=True, weight_decay=args.wd)
-        # optimizer = optim.Adam(model.parameters(), lr=args.lr)
+        # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, nesterov=True, weight_decay=args.wd)
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
         teacher_model = None
         if args.resume_gen != 0:
@@ -243,7 +243,8 @@ if __name__ == '__main__':
 
         for gen in range(args.resume_gen, args.n_gen):
             logging.info('Generation {}/{}'.format(gen + 1, args.n_gen))
-            optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, nesterov=True, weight_decay=args.wd)
+            # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, nesterov=True, weight_decay=args.wd)
+            optimizer = optim.Adam(model.parameters(), lr=args.lr)
             train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model, gen)
             teacher_model = generate_model(model_folder, num_classes)
             last_model_weight = os.path.join(args.outdir, 'save_teacher', "models" + str(gen) + ".pth.tar")
