@@ -1,7 +1,22 @@
+import json
+
 import torch.nn as nn
 import torch.nn.functional as F
 import logging
 import torch
+
+
+def save_dict_to_json(d, json_path):
+    with open(json_path, 'w') as f:
+        # We need to convert the values to float for json (it doesn't accept np.array, np.float, )
+        d = {k: v for k, v in d.items()}
+        json.dump(d, f, indent=4)
+
+
+def load_json_to_dict(json_path):
+    with open(json_path, 'r') as f:
+        params = json.load(f)
+    return params
 
 
 class RunningAverage:
@@ -15,6 +30,7 @@ class RunningAverage:
 
     def value(self):
         return self.total / float(self.steps)
+
 
 # 用在be your own teacher当中
 class AverageMeter(object):
@@ -35,6 +51,7 @@ class AverageMeter(object):
 
     def value(self):
         return self.avg
+
 
 def set_logger(log_path):
     """Set the logger to log info in terminal and file `log_path`.
@@ -125,6 +142,3 @@ def adjust_learning_rate(args, optimizer, epoch):
 
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
-
-
-

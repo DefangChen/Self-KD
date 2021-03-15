@@ -97,32 +97,32 @@ def train(train_loader, model, optimizer, criterion, current_epoch):
 
             # label loss
             loss = criterion(output, target)
-            losses.update(loss.item(),input.size(0))
+            losses.update(loss.item(), input.size(0))
             middle1_loss = criterion(middle_output1, target)
-            middle1_losses.update(middle1_loss.item(),input.size(0))
+            middle1_losses.update(middle1_loss.item(), input.size(0))
             middle2_loss = criterion(middle_output2, target)
-            middle2_losses.update(middle2_loss.item(),input.size(0))
+            middle2_losses.update(middle2_loss.item(), input.size(0))
             middle3_loss = criterion(middle_output3, target)
-            middle3_losses.update(middle3_loss.item(),input.size(0))
+            middle3_losses.update(middle3_loss.item(), input.size(0))
 
             temp4 = output / args.temperature
             temp4 = torch.softmax(temp4, dim=1)  # 做KD用的softmax后的输出
 
             # KD loss
             loss1by4 = utils.kd_loss_function(middle_output1, temp4.detach(), args) * (args.temperature ** 2)
-            losses1_kd.update(loss1by4.item(),input.size(0))
+            losses1_kd.update(loss1by4.item(), input.size(0))
             loss2by4 = utils.kd_loss_function(middle_output2, temp4.detach(), args) * (args.temperature ** 2)
-            losses2_kd.update(loss2by4.item(),input.size(0))
+            losses2_kd.update(loss2by4.item(), input.size(0))
             loss3by4 = utils.kd_loss_function(middle_output3, temp4.detach(), args) * (args.temperature ** 2)
-            losses3_kd.update(loss3by4.item(),input.size(0))
+            losses3_kd.update(loss3by4.item(), input.size(0))
 
             # L2 loss from features
             feature_loss_1 = utils.feature_loss_function(middle1_fea, final_fea.detach())
-            feature_losses_1.update(feature_loss_1.item(),input.size(0))
+            feature_losses_1.update(feature_loss_1.item(), input.size(0))
             feature_loss_2 = utils.feature_loss_function(middle2_fea, final_fea.detach())
-            feature_losses_2.update(feature_loss_2.item(),input.size(0))
+            feature_losses_2.update(feature_loss_2.item(), input.size(0))
             feature_loss_3 = utils.feature_loss_function(middle3_fea, final_fea.detach())
-            feature_losses_3.update(feature_loss_3.item(),input.size(0))
+            feature_losses_3.update(feature_loss_3.item(), input.size(0))
 
             total_loss = (1 - args.alpha) * (loss + middle1_loss + middle2_loss + middle3_loss) + \
                          args.alpha * (loss1by4 + loss2by4 + loss3by4) + \
@@ -181,11 +181,11 @@ def evaluate(test_loader, model, criterion):
         loss = criterion(output, target)
         losses.update(loss.item())
         middle1_loss = criterion(middle_output1, target)
-        middle1_losses.update(middle1_loss.item(),input.size(0))
+        middle1_losses.update(middle1_loss.item(), input.size(0))
         middle2_loss = criterion(middle_output2, target)
-        middle2_losses.update(middle2_loss.item(),input.size(0))
+        middle2_losses.update(middle2_loss.item(), input.size(0))
         middle3_loss = criterion(middle_output3, target)
-        middle3_losses.update(middle3_loss.item(),input.size(0))
+        middle3_losses.update(middle3_loss.item(), input.size(0))
 
         prec = utils.accuracy(output.data, target, topk=(1, 5))
         accTop1_avg.update(prec[0].item())
@@ -221,6 +221,26 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion):
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
         train_metrics = train(train_loader, model, optimizer, criterion, epoch)
         test_metrics = evaluate(test_loader, model, criterion)
+
+        last_path = os.path.join(args.outdir, "save_resume", 'last.pth')
+        # Save latest models weights, optimizer and accuracy
+        torch.save({'state_dict': model.state_dict(),
+                    'optim_dict': optimizer.state_dict(),
+                    'epoch': epoch + 1,
+                    'test_accTop1': test_metrics['test_accTop1'],
+                    'test_accTop5': test_metrics['test_accTop5']}, last_path)
+
+        # If best_eval, best_save_path
+        test_acc = test_metrics['test_accTop1']
+        is_best = (test_acc >= best_acc)
+        if is_best:
+            logging.info("- Found better accuracy")
+            best_acc = test_acc
+            # Save best metrics in a json file in the models directory
+            test_metrics['epoch'] = epoch + 1
+            utils.save_dict_to_json(test_metrics, os.path.join(args.outdir, "save_resume", "test_best_metrics.json"))
+            # Save models and optimizer
+            shutil.copyfile(last_path, os.path.join(args.outdir, "save_resume", 'best.pth'))
 
 
 if __name__ == '__main__':
