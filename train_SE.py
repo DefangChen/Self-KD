@@ -42,6 +42,7 @@ parser.add_argument('--resume', default='', type=str,
                     help='path to  latest checkpoint (default: None)')
 args = parser.parse_args()
 
+
 torch.backends.cudnn.benchmark = True
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 if torch.cuda.is_available():
@@ -173,6 +174,10 @@ if __name__ == '__main__':
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     utils.set_logger(os.path.join(args.outdir, 'log', now_time + 'train.log'))
 
+    w = vars(args)
+    metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
+    logging.info("- All args are followed: " + metrics_string)
+
     logging.info("Loading the datasets...")
     if args.dataset == 'CIFAR10':
         num_classes = 10
@@ -221,6 +226,7 @@ if __name__ == '__main__':
     for i in range(args.cycles):
         logging.info("The {} cycle starts".format(i + 1))
         for j in range(epochs_per_cycle):
+            logging.info("Epoch {}/{}".format(epochs_per_cycle*i + j + 1, args.num_epochs))
             train(model, j, optimizer, criterion, train_loader, epochs_per_cycle)
             evaluate(test_loader, model, criterion)
         snapshots.append(model.state_dict())
@@ -230,6 +236,7 @@ if __name__ == '__main__':
                     'epoch': epochs_per_cycle*i + j,
                     }, last_path)
 
-    test_se(Model, snapshots, use_model_num=5, test_loader=test_loader)
+    logging.info("Begin to SE test!")
+    test_se(Model, snapshots, 5, test_loader, criterion)
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')
