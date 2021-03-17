@@ -23,7 +23,6 @@ parser.add_argument('--outdir', default='save_own_teacher', type=str)
 parser.add_argument('--arch', type=str, default='multi_resnet50_kd',
                     help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100',
-                    choices=['cifar10', 'cifar100'],
                     help='dataset choice')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4 )')

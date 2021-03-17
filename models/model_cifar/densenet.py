@@ -163,7 +163,7 @@ class DenseNet(nn.Module):
         # D100K40   B x 1126 x 8 x 8
         x = F.relu(features, inplace=True)
         x_f = F.avg_pool2d(x, kernel_size=self.avgpool_size).view(features.size(0), -1)  # B x 132
-        x = self.classifier(x_f)
+        x = self.classifier(x_f)  # 返回的是logits
         if self.KD == True:
             return x_f, x
         else:
