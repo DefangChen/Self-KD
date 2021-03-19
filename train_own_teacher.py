@@ -17,16 +17,16 @@ import logging
 import glob
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 training')
-parser.add_argument("--wd", type=float, default=5e-4)
-parser.add_argument('--gpu', default='0,1,2,3,4,5,6,7', type=str)
+parser.add_argument("--wd", type=float, default=1e-4)
+parser.add_argument('--gpu', default='4,5', type=str)
 parser.add_argument('--outdir', default='save_own_teacher', type=str)
-parser.add_argument('--arch', type=str, default='multi_resnet50_kd',
+parser.add_argument('--arch', type=str, default='multi_resnet18_kd',
                     help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100',
                     help='dataset choice')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4 )')
-parser.add_argument('--num_epochs', default=200, type=int,
+parser.add_argument('--num_epochs', default=300, type=int,
                     help='number of total iterations (default: 64,000)')
 parser.add_argument('--batch-size', default=128, type=int,
                     help='mini-batch size (default: 128)')
@@ -35,8 +35,7 @@ parser.add_argument('--lr', default=0.1, type=float,
 parser.add_argument('--step_ratio', default=0.1, type=float)
 parser.add_argument('--momentum', default=0.9, type=float,
                     help='momentum')
-parser.add_argument('--weight-decay', default=5e-4, type=float,
-                    help='weight decay (default: 1e-4)')
+parser.add_argument('--dropout', default=0., type=float)
 
 # dest表示参数的别名
 parser.add_argument('--resume', default='', type=str,
@@ -145,10 +144,12 @@ def train(train_loader, model, optimizer, criterion, current_epoch):
             t.update()
 
         train_metrics = {'train_loss': total_losses.value(),
-
                          'train_accTop1': accTop1_avg.value(),
                          'train_accTop5': accTop5_avg.value(),
-                         'time': time.time() - end}
+                         'middle_losses': middle1_losses.value() + middle2_losses.value() + middle3_losses.value(),
+                         'losses_kd': losses1_kd.value() + losses2_kd.value() + losses3_kd.value(),
+                         'feature_losses': feature_losses_1.value() + feature_losses_2.value() + feature_losses_3.value(),
+                         'time': time.time() - end, }
 
         metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
         logging.info("- Train metrics: " + metrics_string)
@@ -254,6 +255,10 @@ if __name__ == '__main__':
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     utils.set_logger(os.path.join(args.outdir, 'log', now_time + 'train.log'))
 
+    w = vars(args)
+    metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
+    logging.info("- All args are followed: " + metrics_string)
+
     logging.info("Loading the datasets...")
     if args.dataset == 'CIFAR10':
         num_classes = 10
@@ -269,6 +274,7 @@ if __name__ == '__main__':
         root = './Data'
     train_loader, test_loader = data_loader.dataloader(data_name=args.dataset, batch_size=args.batch_size, root=root)
     logging.info("- Done.")
+
     if args.arch == "multi_resnet50_kd":
         model = resnet_own.multi_resnet50_kd(num_classes)
     elif args.arch == "multi_resnet18_kd":

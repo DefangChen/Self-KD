@@ -20,16 +20,16 @@ parser.add_argument("--ensemble", type=bool, default=False)
 # parser.add_argument("--ensemble_start_gen", type=int, default=0)
 parser.add_argument("--resume_weight", type=str, default=None)
 parser.add_argument("--resume_gen", type=int, default=0)
-
-parser.add_argument('--gpu', default='0', type=str)
-parser.add_argument("--lr", type=float, default=0.01)
+parser.add_argument('--gpu', default='2', type=str)
+parser.add_argument("--lr", type=float, default=0.1)
 parser.add_argument("--num_epochs", type=int, default=50)
-parser.add_argument("--batch_size", type=int, default=64)
-parser.add_argument("--n_gen", type=int, default=3)
+parser.add_argument("--batch_size", type=int, default=128)
+parser.add_argument("--n_gen", type=int, default=6)
 parser.add_argument("--dataset", type=str, default="CIFAR100")
 parser.add_argument("--outdir", type=str, default="save_ban_model")
-parser.add_argument("--model", type=str, default="wide_resnet20_8")
-parser.add_argument("--wd", type=float, default=5e-4)
+parser.add_argument("--model", type=str, default="resnet32")
+parser.add_argument("--wd", type=float, default=1e-4)
+parser.add_argument('--momentum', default=0.9, type=float,help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 args = parser.parse_args()
 
@@ -120,7 +120,6 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, t
     best_acc = 0.0
 
     # writer = SummaryWriter(log_dir=args.outdir)  # 记录tensorboard信息用的路径
-
     for epoch in range(start_epoch, args.num_epochs):
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
         train_metrics = train(train_loader, model, optimizer, criterion, teacher_model, gen)
@@ -129,7 +128,6 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, t
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-
             last_model_weight = os.path.join(args.outdir, "save_teacher", "models" + str(gen) + ".pth.tar")
             torch.save(model.state_dict(), last_model_weight)
 
@@ -174,6 +172,7 @@ def ensemble_infer_test(test_loader, model_dir, model, criterion, num_classes):
     return test_metrics
 
 
+# TODO：可能缺少对模型参数的初始化工作
 def generate_model(model_folder, num_classes):
     model_fd = getattr(models, model_folder)
     if "resnet" in args.model:
@@ -206,6 +205,10 @@ if __name__ == '__main__':
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     utils.set_logger(os.path.join(args.outdir, 'log', now_time + 'train.log'))
 
+    w = vars(args)
+    metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
+    logging.info("- All args are followed: " + metrics_string)
+
     logging.info("Loading the datasets...")
     if args.dataset == 'CIFAR10':
         num_classes = 10
@@ -232,8 +235,7 @@ if __name__ == '__main__':
         logging.info('Total params: %.2fM' % num_params)
 
         criterion = nn.CrossEntropyLoss()
-        # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, nesterov=True, weight_decay=args.wd)
-        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
 
         teacher_model = None
         if args.resume_gen != 0:
@@ -243,8 +245,7 @@ if __name__ == '__main__':
 
         for gen in range(args.resume_gen, args.n_gen):
             logging.info('Generation {}/{}'.format(gen + 1, args.n_gen))
-            # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, nesterov=True, weight_decay=args.wd)
-            optimizer = optim.Adam(model.parameters(), lr=args.lr)
+            optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
             train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model, gen)
             teacher_model = generate_model(model_folder, num_classes)
             last_model_weight = os.path.join(args.outdir, 'save_teacher', "models" + str(gen) + ".pth.tar")

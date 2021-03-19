@@ -19,9 +19,9 @@ import logging
 import glob
 
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Ensemble')
-parser.add_argument('--gpu', default='0', type=str)
+parser.add_argument('--gpu', default='3', type=str)
 parser.add_argument('--outdir', default='save_SE', type=str)
-parser.add_argument('--arch', type=str, default='densenetd40k12',
+parser.add_argument('--arch', type=str, default='resnet32',
                     help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100',
                     help='dataset choice')
@@ -37,11 +37,12 @@ parser.add_argument('--cycles', default=6, type=int)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--wd', default=5e-4, type=float,
                     help='weight decay (default: 1e-4)')
+parser.add_argument('--test_se', default=False, type=bool)
+parser.add_argument('--dropout', default=0., type=float)
 # dest表示参数的别名
 parser.add_argument('--resume', default='', type=str,
                     help='path to  latest checkpoint (default: None)')
 args = parser.parse_args()
-
 
 torch.backends.cudnn.benchmark = True
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
@@ -126,10 +127,14 @@ def evaluate(test_loader, model, criterion):
 
 
 # Model需要把创建模型的class名称传入
-def test_se(Model, weights, use_model_num, test_loader, criterion):
+def test_se(Model, weights, use_model_num, test_loader, criterion, num_classes):
+    if "vgg" in args.arch:
+        temp_dic = {'num_classes': num_classes, 'dropout': args.dropout}
+    else:
+        temp_dic = {'num_classes': num_classes}
     index = len(weights) - use_model_num  # 取最后use_model_num个模型
     weights = weights[index:]
-    model_list = [Model() for _ in weights]  # 先初始化新的模型
+    model_list = [Model(**temp_dic) for _ in weights]  # 先初始化新的模型
 
     loss_avg = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
@@ -139,18 +144,23 @@ def test_se(Model, weights, use_model_num, test_loader, criterion):
     for model, weight in zip(model_list, weights):
         model.load_state_dict(weight)
         model.eval()
-        model = nn.DataParallel(model).to(device)
+        # model = nn.DataParallel(model).to(device)
 
-    for data, target in test_loader:
-        data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
-        output_list = [model(data).unsqueeze(0) for model in model_list]
-        # 按照第0维度进行拼接；求取平均值；消除第0维度
-        output = torch.mean(torch.cat(output_list), 0).squeeze()
-        loss = criterion(output, target)
-        loss_avg.update(loss.item(), data.size(0))
-        metrics = utils.accuracy(output, target, topk=(1, 5))
-        accTop1_avg.update(metrics[0].item())
-        accTop5_avg.update(metrics[1].item())
+    with torch.no_grad():
+        for data, target in test_loader:
+            data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
+            output_list = []
+            for model in model_list:
+                model = nn.DataParallel(model).to(device)
+                output_list.append(model(data).unsqueeze(0))
+                torch.cuda.empty_cache()
+            # 按照第0维度进行拼接；求取平均值；消除第0维度
+            output = torch.mean(torch.cat(output_list), 0).squeeze()
+            loss = criterion(output, target)
+            loss_avg.update(loss.item(), data.size(0))
+            metrics = utils.accuracy(output, target, topk=(1, 5))
+            accTop1_avg.update(metrics[0].item())
+            accTop5_avg.update(metrics[1].item())
 
     test_metrics = {'test_loss': loss_avg.value(),
                     'test_accTop1': accTop1_avg.value(),
@@ -194,21 +204,19 @@ if __name__ == '__main__':
     train_loader, test_loader = data_loader.dataloader(data_name=args.dataset, batch_size=args.batch_size, root=root)
     logging.info("- Done.")
 
-    temp_dic = {'num_classes': num_classes}
-    if args.arch == "densenetd40k12":
-        model = models.densenetd40k12(**temp_dic)
-        Model = models.densenetd40k12
-    elif args.arch == "densenetd100k12":
-        model = models.densenetd100k12(**temp_dic)
-        Model = models.densenetd100k12
-    elif args.arch == "densenetd190k12":
-        model = models.densenetd190k12(**temp_dic)
-        Model = models.densenetd190k12
-    elif args.arch == "densenetd100k40":
-        model = models.densenetd100k40(**temp_dic)
-        Model = models.densenetd100k40
-    else:
-        raise Exception("Invalid network!")
+    model_fd = getattr(models, model_folder)
+    if "resnet" in args.arch:
+        model_cfg = getattr(model_fd, 'resnet')
+        model = getattr(model_cfg, args.arch)(num_classes=num_classes)
+        Model = getattr(model_cfg, args.arch)
+    elif "vgg" in args.arch:
+        model_cfg = getattr(model_fd, 'vgg')
+        model = getattr(model_cfg, args.arch)(num_classes=num_classes, dropout=args.dropout)
+        Model = getattr(model_cfg, args.arch)
+    elif "densenet" in args.arch:
+        model_cfg = getattr(model_fd, 'densenet')
+        model = getattr(model_cfg, args.arch)(num_classes=num_classes)
+        Model = getattr(model_cfg, args.arch)
 
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model).to(device)
@@ -218,25 +226,37 @@ if __name__ == '__main__':
     num_params = (sum(p.numel() for p in model.parameters()) / 1000000.0)
     logging.info('Total params: %.2fM' % num_params)
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=args.init_lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
-    snapshots = []
-    epochs_per_cycle = args.num_epochs // args.cycles  # 一个学习率调整周期 多少个epochs
+    if not args.test_se:
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.SGD(model.parameters(), lr=args.init_lr, momentum=args.momentum, nesterov=True,
+                              weight_decay=args.wd)
+        snapshots = []
+        epochs_per_cycle = args.num_epochs // args.cycles  # 一个学习率调整周期 多少个epochs
 
-    for i in range(args.cycles):
-        logging.info("The {} cycle starts".format(i + 1))
-        for j in range(epochs_per_cycle):
-            logging.info("Epoch {}/{}".format(epochs_per_cycle*i + j + 1, args.num_epochs))
-            train(model, j, optimizer, criterion, train_loader, epochs_per_cycle)
-            evaluate(test_loader, model, criterion)
-        snapshots.append(model.state_dict())
-        last_path = os.path.join(args.outdir, "save_snapshot", 'cycle'+str(i)+' model.pth')
-        torch.save({'state_dict': model.state_dict(),
-                    'optim_dict': optimizer.state_dict(),
-                    'epoch': epochs_per_cycle*i + j,
-                    }, last_path)
+        for i in range(args.cycles):
+            logging.info("The {} cycle starts".format(i + 1))
+            for j in range(epochs_per_cycle):
+                logging.info("Epoch {}/{}".format(epochs_per_cycle * i + j + 1, args.num_epochs))
+                train(model, j, optimizer, criterion, train_loader, epochs_per_cycle)
+                evaluate(test_loader, model, criterion)
+            snapshots.append(model.state_dict())
+            last_path = os.path.join(args.outdir, "save_snapshot", 'cycle' + str(i) + ' model.pth')
+            torch.save({'state_dict': model.state_dict(),
+                        'optim_dict': optimizer.state_dict(),
+                        'epoch': epochs_per_cycle * i + j,
+                        }, last_path)
 
     logging.info("Begin to SE test!")
-    test_se(Model, snapshots, 5, test_loader, criterion)
+    if args.test_se == True:
+        snapshots = []
+        criterion = nn.CrossEntropyLoss()
+        model_dir = os.path.join(args.outdir, "save_snapshot")
+        weights = glob.glob(os.path.join(model_dir, "*.pth"))
+        weights = sorted(weights)
+        for weight in weights:
+            temp = torch.load(weight)
+            snapshots.append(temp['state_dict'])
+
+    test_se(Model, snapshots, 5, test_loader, criterion, num_classes)
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')
