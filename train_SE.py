@@ -33,7 +33,7 @@ parser.add_argument('--batch-size', default=128, type=int,
                     help='mini-batch size (default: 128)')
 parser.add_argument('--init_lr', default=0.1, type=float,
                     help='initial learning rate')
-parser.add_argument('--cycles', default=6, type=int)
+parser.add_argument('--cycles', default=5, type=int)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--wd', default=5e-4, type=float,
                     help='weight decay (default: 1e-4)')
@@ -144,7 +144,6 @@ def test_se(Model, weights, use_model_num, test_loader, criterion, num_classes):
     for model, weight in zip(model_list, weights):
         model.load_state_dict(weight)
         model.eval()
-        # model = nn.DataParallel(model).to(device)
 
     with torch.no_grad():
         for data, target in test_loader:
@@ -207,16 +206,17 @@ if __name__ == '__main__':
     model_fd = getattr(models, model_folder)
     if "resnet" in args.arch:
         model_cfg = getattr(model_fd, 'resnet')
-        model = getattr(model_cfg, args.arch)(num_classes=num_classes)
         Model = getattr(model_cfg, args.arch)
+        model = Model(num_classes=num_classes)
+        # model = getattr(model_cfg, args.arch)(num_classes=num_classes)
     elif "vgg" in args.arch:
         model_cfg = getattr(model_fd, 'vgg')
-        model = getattr(model_cfg, args.arch)(num_classes=num_classes, dropout=args.dropout)
         Model = getattr(model_cfg, args.arch)
+        model = Model(num_classes=num_classes, dropout=args.dropout)
     elif "densenet" in args.arch:
         model_cfg = getattr(model_fd, 'densenet')
-        model = getattr(model_cfg, args.arch)(num_classes=num_classes)
         Model = getattr(model_cfg, args.arch)
+        model = Model(num_classes=num_classes)
 
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model).to(device)
@@ -246,8 +246,7 @@ if __name__ == '__main__':
                         'epoch': epochs_per_cycle * i + j,
                         }, last_path)
 
-    logging.info("Begin to SE test!")
-    if args.test_se == True:
+    elif args.test_se == True:
         snapshots = []
         criterion = nn.CrossEntropyLoss()
         model_dir = os.path.join(args.outdir, "save_snapshot")
@@ -257,6 +256,7 @@ if __name__ == '__main__':
             temp = torch.load(weight)
             snapshots.append(temp['state_dict'])
 
+    logging.info("Begin to SE test!")
     test_se(Model, snapshots, 5, test_loader, criterion, num_classes)
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')
