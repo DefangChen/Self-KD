@@ -142,6 +142,7 @@ def test_se(Model, weights, use_model_num, test_loader, criterion, num_classes):
     end = time.time()
 
     for model, weight in zip(model_list, weights):
+        model = nn.DataParallel(model).to(device)
         model.load_state_dict(weight)
         model.eval()
 
