@@ -19,7 +19,7 @@ parser.add_argument("--num_epochs", type=int, default=300)
 parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--dataset", type=str, default="CIFAR100")
 parser.add_argument("--outdir", type=str, default="save_CSKD_model")
-parser.add_argument("--model", type=str, default="resnet32")
+parser.add_argument("--model", type=str, default="CIFAR_ResNet18")
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
@@ -177,8 +177,8 @@ if __name__ == '__main__':
     logging.info("- Done.")
 
     model_fd = getattr(models, model_folder)
-    if "resnet" in args.model:
-        model_cfg = getattr(model_fd, 'resnet')
+    if "resnet" in args.model or "ResNet" in args.model:
+        model_cfg = getattr(model_fd, 'resnet_CSKD')
         model = getattr(model_cfg, args.model)(num_classes=num_classes)
     elif "vgg" in args.model:
         model_cfg = getattr(model_fd, 'vgg')
@@ -217,6 +217,6 @@ if __name__ == '__main__':
                         'test_accTop5': test_metrics['test_accTop5']}
             torch.save(save_dic, last_path)
 
-        adjust_learning_rate(optimizer, i)
+        adjust_learning_rate(optimizer, i+1)
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')
