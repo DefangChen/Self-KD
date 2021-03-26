@@ -10,7 +10,7 @@ from torch.utils.data import Sampler, Dataset, DataLoader, BatchSampler, Sequent
 from torchvision import transforms, datasets
 
 
-# 继承了Sampler类
+# 继承了Sampler类  Sampler类用于选择数据的indices
 class PairBatchSampler(Sampler):
     # 本代码当中num_iterations用到的地方都为None
     def __init__(self, dataset, batch_size, num_iterations=None):
@@ -50,7 +50,7 @@ class PairBatchSampler(Sampler):
             return self.num_iterations
 
 
-# 继承自dataset
+# 继承自dataset Dataset决定返回的东西是什么 定义在getitem函数当中
 class DatasetWrapper(Dataset):
     # Additional attributes
     # - indices
