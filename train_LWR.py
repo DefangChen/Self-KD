@@ -22,7 +22,7 @@ parser.add_argument("--num_epochs", type=int, default=300)
 parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--dataset", type=str, default="CIFAR100")
 parser.add_argument("--outdir", type=str, default="save_LWR")
-parser.add_argument("--model", type=str, default="wide_resnet20_8")
+parser.add_argument("--model", type=str, default="vgg16")
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
@@ -31,7 +31,7 @@ parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
                     help='Learning rate step gamma (default: 0.7)')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
-parser.add_argument('--temp', default=4.0, type=float, help='temperature scaling')
+parser.add_argument('--temp', default=5.0, type=float, help='temperature scaling')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True  # 对于固定不变的网络可以起到优化作用
@@ -42,7 +42,7 @@ else:
     device = "cpu"
 
 
-def train(model, train_loader, optimizer, lwr):
+def train(model, train_loader, optimizer, lwr, cur_epoch):
     model.train()
     loss_avg = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
@@ -54,7 +54,7 @@ def train(model, train_loader, optimizer, lwr):
             data, target = data.to(device), target.to(device)
 
             output = model(data)
-            loss = lwr(batch_idx, output, target, eval=False)
+            loss = lwr(batch_idx, output, target, cur_epoch)
 
             optimizer.zero_grad()
             loss.backward()
@@ -63,7 +63,7 @@ def train(model, train_loader, optimizer, lwr):
             metrics = utils.accuracy(output, target, topk=(1, 5))  # metircs代表指标
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
-            loss_avg.update(loss.item(),data.size(0))
+            loss_avg.update(loss.item(), data.size(0))
 
             t.update()
 
@@ -75,7 +75,6 @@ def train(model, train_loader, optimizer, lwr):
     metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
     logging.info("- Train metrics: " + metrics_string)
     return train_metrics
-
 
 
 def evaluate(model, test_loader):
@@ -159,7 +158,7 @@ if __name__ == '__main__':
     logging.info('Total params: %.2fM' % num_params)
 
     lwr = LWR(k=5, update_rate=0.9, num_batches_per_epoch=len(dataset1) // args.batch_size,
-              dataset_length=len(dataset1), output_shape=(num_classes,), tau=5, max_epochs=20, softmax_dim=1)
+              dataset_length=len(dataset1), output_shape=(num_classes,), tau=args.temp, max_epochs=args.num_epochs, softmax_dim=1)
 
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
@@ -167,7 +166,7 @@ if __name__ == '__main__':
     best_acc = 0
     for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
-        train_metrics = train(model, train_loader,optimizer, lwr)
+        train_metrics = train(model, train_loader, optimizer, lwr, i + 1)
         test_metrics = evaluate(model, test_loader)
         test_acc = test_metrics['test_accTop1']
         if test_acc >= best_acc:
@@ -184,5 +183,3 @@ if __name__ == '__main__':
 
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')
-
-
