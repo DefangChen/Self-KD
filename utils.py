@@ -189,4 +189,6 @@ class LWR(torch.nn.Module):
             self.labels[batch_idx, ...].to(logits.get_device()),
             reduction='batchmean')
         total_loss = loss1 + loss2
+        # print("loss1:", loss1)
+        # print("loss2:", loss2)
         return total_loss

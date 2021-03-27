@@ -160,7 +160,7 @@ if __name__ == '__main__':
     lwr = LWR(k=5, update_rate=0.9, num_batches_per_epoch=len(dataset1) // args.batch_size,
               dataset_length=len(dataset1), output_shape=(num_classes,), tau=args.temp, max_epochs=args.num_epochs, softmax_dim=1)
 
-    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
     best_acc = 0
