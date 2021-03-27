@@ -146,8 +146,7 @@ def adjust_learning_rate(args, optimizer, epoch):
         param_group['lr'] = lr
 
 
-# 以下均使用在LWR当中
-# TODO:train loss返回负数，且acc到0.25就收敛了
+# 以下均使用在LWR当中 用于计算loss和保存每个sample的soft label
 class LWR(torch.nn.Module):
     # 采用了函数注解
     def __init__(self, k: int, num_batches_per_epoch: int, dataset_length: int, output_shape: Tuple[int],
