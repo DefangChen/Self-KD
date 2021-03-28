@@ -13,7 +13,7 @@ import utils
 from dataset.dataloader_LWR import dataloader
 import torch.nn.functional as F
 from utils import LWR
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import MultiStepLR
 
 parser = argparse.ArgumentParser(description='PyTorch LWR Example')
 parser.add_argument('--gpu', default='0', type=str)
@@ -22,12 +22,11 @@ parser.add_argument("--num_epochs", type=int, default=300)
 parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--dataset", type=str, default="CIFAR100")
 parser.add_argument("--outdir", type=str, default="save_LWR")
-parser.add_argument("--model", type=str, default="vgg16")
+parser.add_argument("--model", type=str, default="vgg19")
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
-
-parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
+parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
                     help='Learning rate step gamma (default: 0.7)')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
@@ -106,18 +105,17 @@ def evaluate(model, test_loader):
 
 if __name__ == '__main__':
     begin_time = time.time()
-    if not os.path.exists(args.outdir):
-        print("Directory does not exist! Making directory {}".format(args.outdir))
-        os.makedirs(args.outdir)
-        os.makedirs(args.outdir + "/log")
-        os.makedirs(args.outdir + "/save_model")
+    utils.solve_dir(args.outdir)
+    utils.solve_dir(os.path.join(args.outdir, args.model))
+    utils.solve_dir(os.path.join(args.outdir, args.model, 'save_model'))
+    utils.solve_dir(os.path.join(args.outdir, args.model, 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, 'log', now_time + 'train.log'))
+    utils.set_logger(os.path.join(args.outdir, args.model, 'log', now_time + 'train.log'))
 
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
-    logging.info("- All args are followed: " + metrics_string)
+    logging.info("- All args are followed:\n" + metrics_string)
 
     logging.info("Loading the datasets...")
 
@@ -158,26 +156,28 @@ if __name__ == '__main__':
     logging.info('Total params: %.2fM' % num_params)
 
     lwr = LWR(k=5, update_rate=0.9, num_batches_per_epoch=len(dataset1) // args.batch_size,
-              dataset_length=len(dataset1), output_shape=(num_classes,), tau=args.temp, max_epochs=args.num_epochs, softmax_dim=1)
+              dataset_length=len(dataset1), output_shape=(num_classes,), tau=args.temp, max_epochs=args.num_epochs,
+              softmax_dim=1)
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
-    scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
-
+    scheduler = MultiStepLR(optimizer, milestones=[150, 225], gamma=args.gamma, verbose=True)
     best_acc = 0
     for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
         train_metrics = train(model, train_loader, optimizer, lwr, i + 1)
         test_metrics = evaluate(model, test_loader)
         test_acc = test_metrics['test_accTop1']
+        save_dic = {'state_dict': model.state_dict(),
+                    'optim_dict': optimizer.state_dict(),
+                    'epoch': i + 1,
+                    'test_accTop1': test_metrics['test_accTop1'],
+                    'test_accTop5': test_metrics['test_accTop5']}
+        last_path = os.path.join(args.outdir, args.model, 'save_model', 'last_model.pth')
+        torch.save(save_dic, last_path)
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            last_path = os.path.join(args.outdir, 'save_model', 'best_model.pth')
-            save_dic = {'state_dict': model.state_dict(),
-                        'optim_dict': optimizer.state_dict(),
-                        'epoch': i + 1,
-                        'test_accTop1': test_metrics['test_accTop1'],
-                        'test_accTop5': test_metrics['test_accTop5']}
+            best_path = os.path.join(args.outdir, args.model, 'save_model', 'best_model.pth')
             torch.save(save_dic, last_path)
         scheduler.step()
 

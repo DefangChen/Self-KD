@@ -277,11 +277,6 @@ def resnet18(pretrained=False, **kwargs):
     return model
 
 
-def my_resnet34(pretrained=False, **kwargs):
-    model = my_ResNet(BasicBlock, [3, 4, 6, 3, 3], **kwargs)
-    return model
-
-
 def resnet34(pretrained=False, **kwargs):
     """Constructs a ResNet-34 model.
     Args:

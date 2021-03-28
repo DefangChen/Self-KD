@@ -1,4 +1,5 @@
 import json
+import os
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -192,3 +193,8 @@ class LWR(torch.nn.Module):
         # print("loss1:", loss1)
         # print("loss2:", loss2)
         return total_loss
+
+
+def solve_dir(dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
