@@ -57,7 +57,6 @@ class KDLoss(nn.Module):
     def forward(self, input, target):
         log_p = torch.log_softmax(input / self.temp_factor, dim=1)  # 学生
         q = torch.softmax(target / self.temp_factor, dim=1)  # 教师
-        # TODO：KLDivLoss到底怎么用？target的位置？
         loss = self.kl_div(log_p, q) * (self.temp_factor ** 2) / input.size(0)
         return loss
 
@@ -90,9 +89,8 @@ def train(train_loader, model, optimizer, criterion1, criterion_kd):
             loss.backward()
             optimizer.step()
 
-            loss_kd.update(cls_loss.item(), batch_size // 2)
-            loss_avg.update(loss.item(), batch_size // 2)
-
+            loss_kd.update(cls_loss.item())
+            loss_avg.update(loss.item())
             metrics = utils.accuracy(outputs, targets_, topk=(1, 5))  # metircs代表指标
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
@@ -129,7 +127,7 @@ def evaluate(test_loader, model, criterion):
             # only one element tensors can be converted to Python scalars
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
-            loss_avg.update(loss.item(), test_batch.size(0))
+            loss_avg.update(loss.item())
 
     # compute mean of all metrics in summary
     test_metrics = {'test_loss': loss_avg.value(),

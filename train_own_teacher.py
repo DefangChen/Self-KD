@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(description='PyTorch CIFAR10 training')
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--gpu', default='4,5', type=str)
 parser.add_argument('--outdir', default='save_own_teacher', type=str)
-parser.add_argument('--arch', type=str, default='multi_resnet18_kd',
+parser.add_argument('--arch', type=str, default='multi_resnet50_kd',
                     help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100',
                     help='dataset choice')
@@ -32,7 +32,6 @@ parser.add_argument('--batch-size', default=128, type=int,
                     help='mini-batch size (default: 128)')
 parser.add_argument('--lr', default=0.1, type=float,
                     help='initial learning rate')
-parser.add_argument('--step_ratio', default=0.1, type=float)
 parser.add_argument('--momentum', default=0.9, type=float,
                     help='momentum')
 parser.add_argument('--dropout', default=0., type=float)
@@ -95,32 +94,32 @@ def train(train_loader, model, optimizer, criterion, current_epoch):
 
             # label loss
             loss = criterion(output, target)
-            losses.update(loss.item(), input.size(0))
+            losses.update(loss.item())
             middle1_loss = criterion(middle_output1, target)
-            middle1_losses.update(middle1_loss.item(), input.size(0))
+            middle1_losses.update(middle1_loss.item())
             middle2_loss = criterion(middle_output2, target)
-            middle2_losses.update(middle2_loss.item(), input.size(0))
+            middle2_losses.update(middle2_loss.item())
             middle3_loss = criterion(middle_output3, target)
-            middle3_losses.update(middle3_loss.item(), input.size(0))
+            middle3_losses.update(middle3_loss.item())
 
             temp4 = output / args.temperature
             temp4 = torch.softmax(temp4, dim=1)  # 做KD用的softmax后的输出
 
             # KD loss
             loss1by4 = utils.kd_loss_function(middle_output1, temp4.detach(), args) * (args.temperature ** 2)
-            losses1_kd.update(loss1by4.item(), input.size(0))
+            losses1_kd.update(loss1by4.item())
             loss2by4 = utils.kd_loss_function(middle_output2, temp4.detach(), args) * (args.temperature ** 2)
-            losses2_kd.update(loss2by4.item(), input.size(0))
+            losses2_kd.update(loss2by4.item())
             loss3by4 = utils.kd_loss_function(middle_output3, temp4.detach(), args) * (args.temperature ** 2)
-            losses3_kd.update(loss3by4.item(), input.size(0))
+            losses3_kd.update(loss3by4.item())
 
-            # L2 loss from features
+            # L2 loss from features TODO:feature_map_loss可能存在bug 没有取平均
             feature_loss_1 = utils.feature_loss_function(middle1_fea, final_fea.detach())
-            feature_losses_1.update(feature_loss_1.item(), input.size(0))
+            feature_losses_1.update(feature_loss_1.item())
             feature_loss_2 = utils.feature_loss_function(middle2_fea, final_fea.detach())
-            feature_losses_2.update(feature_loss_2.item(), input.size(0))
+            feature_losses_2.update(feature_loss_2.item())
             feature_loss_3 = utils.feature_loss_function(middle3_fea, final_fea.detach())
-            feature_losses_3.update(feature_loss_3.item(), input.size(0))
+            feature_losses_3.update(feature_loss_3.item())
 
             total_loss = (1 - args.alpha) * (loss + middle1_loss + middle2_loss + middle3_loss) + \
                          args.alpha * (loss1by4 + loss2by4 + loss3by4) + \
@@ -181,11 +180,11 @@ def evaluate(test_loader, model, criterion):
         loss = criterion(output, target)
         losses.update(loss.item())
         middle1_loss = criterion(middle_output1, target)
-        middle1_losses.update(middle1_loss.item(), input.size(0))
+        middle1_losses.update(middle1_loss.item())
         middle2_loss = criterion(middle_output2, target)
-        middle2_losses.update(middle2_loss.item(), input.size(0))
+        middle2_losses.update(middle2_loss.item())
         middle3_loss = criterion(middle_output3, target)
-        middle3_losses.update(middle3_loss.item(), input.size(0))
+        middle3_losses.update(middle3_loss.item())
 
         prec = utils.accuracy(output.data, target, topk=(1, 5))
         accTop1_avg.update(prec[0].item())
@@ -215,7 +214,6 @@ def evaluate(test_loader, model, criterion):
 def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion):
     start_epoch = 0
     best_acc = 0.0
-    # writer = SummaryWriter(log_dir=args.outdir)  # 记录tensorboard信息用的路径
 
     for epoch in range(start_epoch, args.num_epochs):
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
@@ -223,41 +221,36 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion):
         test_metrics = evaluate(test_loader, model, criterion)
 
         last_path = os.path.join(args.outdir, "save_resume", 'last.pth')
-        # Save latest models weights, optimizer and accuracy
         torch.save({'state_dict': model.state_dict(),
                     'optim_dict': optimizer.state_dict(),
                     'epoch': epoch + 1,
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}, last_path)
 
-        # If best_eval, best_save_path
         test_acc = test_metrics['test_accTop1']
         is_best = (test_acc >= best_acc)
         if is_best:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            # Save best metrics in a json file in the models directory
             test_metrics['epoch'] = epoch + 1
-            utils.save_dict_to_json(test_metrics, os.path.join(args.outdir, "save_resume", "test_best_metrics.json"))
-            # Save models and optimizer
-            shutil.copyfile(last_path, os.path.join(args.outdir, "save_resume", 'best.pth'))
+            utils.save_dict_to_json(test_metrics,
+                                    os.path.join(args.outdir, args.arch, "save_resume", "test_best_metrics.json"))
+            shutil.copyfile(last_path, os.path.join(args.outdir, args.arch, "save_model", 'best.pth'))
 
 
 if __name__ == '__main__':
     begin_time = time.time()
-    # save_path = args.save_path = os.path.join(args.save_folder, args.arch)
-    if not os.path.exists(args.outdir):
-        print("Directory does not exist! Making directory {}".format(args.outdir))
-        os.makedirs(args.outdir)
-        os.makedirs(args.outdir + "/save_resume")
-        os.makedirs(args.outdir + "/log")
+    utils.solve_dir(args.outdir)
+    utils.solve_dir(os.path.join(args.outdir, args.arch))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, 'save_model'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, 'log', now_time + 'train.log'))
+    utils.set_logger(os.path.join(args.outdir, args.arch, 'log', now_time + 'train.log'))
 
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
-    logging.info("- All args are followed: " + metrics_string)
+    logging.info("- All args are followed:\n" + metrics_string)
 
     logging.info("Loading the datasets...")
     if args.dataset == 'CIFAR10':
@@ -301,7 +294,7 @@ if __name__ == '__main__':
     logging.info('Total params: %.2fM' % num_params)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, nesterov=True, weight_decay=args.wd)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
 
     logging.info("Starting training for {} epoch(s)".format(args.num_epochs))
     train_and_evaluate(model, train_loader, test_loader, optimizer, criterion)

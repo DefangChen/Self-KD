@@ -237,7 +237,7 @@ if __name__ == '__main__':
             teacher_model = generate_model(model_folder, num_classes)
             last_model_weight = os.path.join(args.outdir, args.model, 'save_gen_model',
                                              "models" + str(gen) + ".pth.tar")
-            teacher_model.load_state_dict(torch.load(last_model_weight))
+            teacher_model.load_state_dict(torch.load(last_model_weight)['state_dict'])
             model = generate_model(model_folder, num_classes)
         logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
 

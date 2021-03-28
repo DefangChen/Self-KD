@@ -40,6 +40,7 @@ parser.add_argument('--T', type=float, default=3,
 parser.add_argument('--lambda_s', type=float, default=1)
 parser.add_argument('--lambda_t', type=float, default=1)
 parser.add_argument('--cycle', type=float, default=4)
+parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True
@@ -200,10 +201,10 @@ if __name__ == '__main__':
     if "resnet" in args.arch:
         model_cfg = getattr(model_fd, 'resnet')
         model = getattr(model_cfg, args.arch)(num_classes=num_classes)
-    elif "vgg" in args.model:
+    elif "vgg" in args.arch:
         model_cfg = getattr(model_fd, 'vgg')
         model = getattr(model_cfg, args.arch)(num_classes=num_classes, dropout=args.dropout)
-    elif "densenet" in args.model:
+    elif "densenet" in args.arch:
         model_cfg = getattr(model_fd, 'densenet')
         model = getattr(model_cfg, args.arch)(num_classes=num_classes)
 
