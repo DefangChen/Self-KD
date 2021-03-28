@@ -30,7 +30,7 @@ parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
                     help='Learning rate step gamma (default: 0.7)')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
-parser.add_argument('--temp', default=5.0, type=float, help='temperature scaling')
+parser.add_argument('--temp', default=3.0, type=float, help='temperature scaling')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True  # 对于固定不变的网络可以起到优化作用
@@ -62,7 +62,7 @@ def train(model, train_loader, optimizer, lwr, cur_epoch):
             metrics = utils.accuracy(output, target, topk=(1, 5))  # metircs代表指标
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
-            loss_avg.update(loss.item(), data.size(0))
+            loss_avg.update(loss.item())
 
             t.update()
 
@@ -88,7 +88,7 @@ def evaluate(model, test_loader):
             data, target = data.to(device), target.to(device)
             output = model(data)
             loss = F.cross_entropy(output, target, reduction='mean')
-            loss_avg.update(loss.item(), data.size(0))
+            loss_avg.update(loss.item())
             metrics = utils.accuracy(output, target, topk=(1, 5))
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())

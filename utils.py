@@ -22,10 +22,7 @@ def load_json_to_dict(json_path):
     return params
 
 
-# 用在be your own teacher当中
 class AverageMeter(object):
-    """Computes and stores the average and current value"""
-
     def __init__(self):
         self.reset()
 
@@ -88,10 +85,8 @@ def accuracy(output, target, topk=(1,)):
 
 
 # 用在ban当中
-def kd_loss(outputs, labels, teacher_outputs, alpha=0.2, T=20):
-    KD_loss = nn.KLDivLoss()(F.log_softmax(outputs / T, dim=1),
-                             F.softmax(teacher_outputs / T, dim=1)) * alpha + F.cross_entropy(outputs, labels) * (
-                      1. - alpha)
+def kd_loss(outputs, labels, teacher_outputs, alpha=0.2, T=3):
+    KD_loss = T ** 2 * nn.KLDivLoss(reduction='batchmean')(F.log_softmax(outputs / T, dim=1), F.softmax(teacher_outputs / T, dim=1)) * alpha + F.cross_entropy(outputs, labels) * (1. - alpha)
     return KD_loss
 
 
@@ -177,8 +172,6 @@ class LWR(torch.nn.Module):
             self.labels[batch_idx, ...].to(logits.get_device()),
             reduction='batchmean')
         total_loss = loss1 + loss2
-        # print("loss1:", loss1)
-        # print("loss2:", loss2)
         return total_loss
 
 

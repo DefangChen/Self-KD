@@ -24,7 +24,7 @@ parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 parser.add_argument('--cls', '-cls', action='store_true', default=True, help='adding cls loss')
-parser.add_argument('--temp', default=4.0, type=float, help='temperature scaling')
+parser.add_argument('--temp', default=3.0, type=float, help='temperature scaling')
 parser.add_argument('--lamda', default=1.0, type=float, help='cls loss weight ratio')
 args = parser.parse_args()
 
@@ -144,14 +144,13 @@ def evaluate(test_loader, model, criterion):
 
 if __name__ == '__main__':
     begin_time = time.time()
-    if not os.path.exists(args.outdir):
-        print("Directory does not exist! Making directory {}".format(args.outdir))
-        os.makedirs(args.outdir)
-        os.makedirs(args.outdir + "/resume")
-        os.makedirs(args.outdir + "/log")
+    utils.solve_dir(args.outdir)
+    utils.solve_dir(os.path.join(args.outdir, args.model))
+    utils.solve_dir(os.path.join(args.outdir, args.model, 'save_model'))
+    utils.solve_dir(os.path.join(args.outdir, args.model, 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, 'log', now_time + 'train.log'))
+    utils.set_logger(os.path.join(args.outdir, args.model, 'log', now_time + 'train.log'))
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
     logging.info("- All args are followed: \n" + metrics_string)
@@ -178,7 +177,7 @@ if __name__ == '__main__':
 
     model_fd = getattr(models, model_folder)
     if "resnet" in args.model or "ResNet" in args.model:
-        model_cfg = getattr(model_fd, 'resnet_CSKD')
+        model_cfg = getattr(model_fd, 'resnet')
         model = getattr(model_cfg, args.model)(num_classes=num_classes)
     elif "vgg" in args.model:
         model_cfg = getattr(model_fd, 'vgg')
@@ -205,18 +204,20 @@ if __name__ == '__main__':
         train_metrics = train(train_loader, model, optimizer, criterion1, criterion2)
         test_metrics = evaluate(test_loader, model, criterion1)
         test_acc = test_metrics['test_accTop1']
+
+        save_dic = {'state_dict': model.state_dict(),
+                    'optim_dict': optimizer.state_dict(),
+                    'epoch': i + 1,
+                    'test_accTop1': test_metrics['test_accTop1'],
+                    'test_accTop5': test_metrics['test_accTop5']}
+        last_path = os.path.join(args.outdir, args.model, 'save_model', 'last_model.pth')
+        torch.save(save_dic, last_path)
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
+            best_path = os.path.join(args.outdir, args.model, 'save_model', 'best_model.pth')
+            torch.save(save_dic, best_path)
+        adjust_learning_rate(optimizer, i + 1)
 
-            last_path = os.path.join(args.outdir, 'resume', 'best_model.pth')
-            save_dic = {'state_dict': model.state_dict(),
-                        'optim_dict': optimizer.state_dict(),
-                        'epoch': i + 1,
-                        'test_accTop1': test_metrics['test_accTop1'],
-                        'test_accTop5': test_metrics['test_accTop5']}
-            torch.save(save_dic, last_path)
-
-        adjust_learning_rate(optimizer, i+1)
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')

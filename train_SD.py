@@ -94,14 +94,13 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
             loss = criterion(output_batch, labels_batch)
             if teacher is not None:
                 with torch.no_grad():
-                    output_teacher = teacher(train_batch)
-                    # output_teacher = F.softmax(output_teacher / T, 1)
+                    output_teacher = teacher(train_batch).detach()
                 # loss_kd = (- F.log_softmax(output_batch / T, 1) * output_teacher).sum(dim=1).mean() * T * T
-                # TODO:loss function可能是错的
-                loss_kd = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch, dim=1), F.softmax(output_teacher / T, dim=1))
-                print(loss_kd)
+                # TODO:loss function可能是错的 与原论文存在出入
+                loss_kd = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch / T, dim=1),
+                                                              F.softmax(output_teacher / T, dim=1))
                 loss *= args.lambda_s
-                loss += (loss_kd * args.lambda_t)
+                loss += (loss_kd * args.lambda_t * T ** 2)
                 loss_avgkd.update(loss_kd.item(), train_batch.size(0))
             optimizer.zero_grad()
             loss.backward()
@@ -115,7 +114,7 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
             metrics = utils.accuracy(output_batch, labels_batch, topk=(1, 5))  # metircs代表指标
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
-            loss_avg.update(loss.item(), train_batch.size(0))
+            loss_avg.update(loss.item())
 
             t.update()
 
@@ -132,9 +131,9 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
 
 def evaluate(test_loader, model, criterion):
     model.eval()
-    loss_avg = utils.RunningAverage()
-    accTop1_avg = utils.RunningAverage()
-    accTop5_avg = utils.RunningAverage()
+    loss_avg = utils.AverageMeter()
+    accTop1_avg = utils.AverageMeter()
+    accTop5_avg = utils.AverageMeter()
     end = time.time()
 
     with torch.no_grad():
@@ -164,19 +163,18 @@ if __name__ == '__main__':
     begin_time = time.time()
     args.lambda_s = 1 + 1 / args.T
     args.lambda_t = 1
-    # save_path = args.save_path = os.path.join(args.save_folder, args.arch)
-    if not os.path.exists(args.outdir):
-        print("Directory does not exist! Making directory {}".format(args.outdir))
-        os.makedirs(args.outdir)
-        os.makedirs(args.outdir + "/save_snapshot")
-        os.makedirs(args.outdir + "/log")
+
+    utils.solve_dir(args.outdir)
+    utils.solve_dir(os.path.join(args.outdir, args.arch))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, 'save_snapshot'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, 'log', args.arch + now_time + 'train.log'))
+    utils.set_logger(os.path.join(args.outdir, args.arch, 'log', now_time + 'train.log'))
 
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
-    logging.info("- All args are followed: " + metrics_string)
+    logging.info("- All args are followed:\n" + metrics_string)
 
     logging.info("Loading the datasets...")
     if args.dataset == 'CIFAR10':
@@ -228,11 +226,7 @@ if __name__ == '__main__':
                                        iteration_per_cycle)
         test_metrics = evaluate(test_loader, model, criterion)
         test_acc = test_metrics['test_accTop1']
-        if test_acc >= best_acc:
-            logging.info("- Found better accuracy")
-            best_acc = test_acc
 
-        last_path = os.path.join(args.outdir, 'save_snapshot', 'save_resume.pth')
         save_dic = {'state_dict': model.state_dict(),
                     'optim_dict': optimizer.state_dict(),
                     'epoch': i + 1,
@@ -240,7 +234,14 @@ if __name__ == '__main__':
                     'test_accTop5': test_metrics['test_accTop5']}
         if teacher is not None:
             save_dic['teacher_dict'] = teacher.state_dict()
+        last_path = os.path.join(args.outdir, args.arch, 'save_snapshot', 'last.pth')
         torch.save(save_dic, last_path)
+
+        if test_acc >= best_acc:
+            logging.info("- Found better accuracy")
+            best_acc = test_acc
+            best_path = os.path.join(args.outdir, args.arch, 'save_snapshot', 'best.pth')
+            torch.save(save_dic, last_path)
 
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')

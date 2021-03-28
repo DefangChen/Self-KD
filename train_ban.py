@@ -29,6 +29,7 @@ parser.add_argument("--model", type=str, default="resnet32")
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
+parser.add_argument('--temp', default=3.0, type=float, help='temperature scaling')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True  # 对于固定不变的网络可以起到优化作用
@@ -59,7 +60,7 @@ def train(train_loader, model, optimizer, criterion, teacher_model=None, gen=0):
                 loss = criterion(output_batch, labels_batch)
             else:
                 teacher_output_batch = teacher_model(train_batch).detach()
-                loss = utils.kd_loss(output_batch, labels_batch, teacher_output_batch)
+                loss = utils.kd_loss(output_batch, labels_batch, teacher_output_batch, T=args.temp)
 
             optimizer.zero_grad()
             loss.backward()
@@ -68,7 +69,7 @@ def train(train_loader, model, optimizer, criterion, teacher_model=None, gen=0):
             metrics = utils.accuracy(output_batch, labels_batch, topk=(1, 5))
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
-            loss_avg.update(loss.item(), train_batch.size(0))
+            loss_avg.update(loss.item())
 
             t.update()
 
@@ -100,7 +101,7 @@ def evaluate(test_loader, model, criterion):
             metrics = utils.accuracy(output_batch, labels_batch, topk=(1, 5))
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
-            loss_avg.update(loss.item(), test_batch.size(0))
+            loss_avg.update(loss.item())
 
     test_metrics = {'test_loss': loss_avg.value(),
                     'test_accTop1': accTop1_avg.value(),
@@ -127,7 +128,8 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, t
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            best_model_weight = os.path.join(args.outdir, args.model, "save_gen_model", "models" + str(gen) + ".pth.tar")
+            best_model_weight = os.path.join(args.outdir, args.model, "save_gen_model",
+                                             "models" + str(gen) + ".pth.tar")
             torch.save(save_dic, best_model_weight)
 
 
@@ -156,7 +158,7 @@ def ensemble_infer_test(test_loader, model_dir, model, criterion, num_classes, t
             loss = criterion(final_ans, targets)
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
-            loss_avg.update(loss, inputs.size(0))
+            loss_avg.update(loss)
 
     test_metrics = {'test_loss': loss_avg.value(),
                     'test_accTop1': accTop1_avg.value(),
@@ -233,9 +235,9 @@ if __name__ == '__main__':
             train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model, gen)
 
             teacher_model = generate_model(model_folder, num_classes)
-            last_model_weight = os.path.join(args.outdir, 'save_gen_model', "models" + str(gen) + ".pth.tar")
+            last_model_weight = os.path.join(args.outdir, args.model, 'save_gen_model',
+                                             "models" + str(gen) + ".pth.tar")
             teacher_model.load_state_dict(torch.load(last_model_weight))
-            teacher_model.eval()
             model = generate_model(model_folder, num_classes)
         logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
 
