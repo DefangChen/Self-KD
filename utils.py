@@ -22,19 +22,6 @@ def load_json_to_dict(json_path):
     return params
 
 
-class RunningAverage:
-    def __init__(self):
-        self.steps = 0
-        self.total = 0
-
-    def update(self, val):
-        self.total += val
-        self.steps += 1
-
-    def value(self):
-        return self.total / float(self.steps)
-
-
 # 用在be your own teacher当中
 class AverageMeter(object):
     """Computes and stores the average and current value"""
