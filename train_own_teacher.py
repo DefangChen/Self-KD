@@ -220,7 +220,7 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion):
         train_metrics = train(train_loader, model, optimizer, criterion, epoch)
         test_metrics = evaluate(test_loader, model, criterion)
 
-        last_path = os.path.join(args.outdir, "save_resume", 'last.pth')
+        last_path = os.path.join(args.outdir, args.arch, "save_model", 'last.pth')
         torch.save({'state_dict': model.state_dict(),
                     'optim_dict': optimizer.state_dict(),
                     'epoch': epoch + 1,
@@ -234,7 +234,7 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion):
             best_acc = test_acc
             test_metrics['epoch'] = epoch + 1
             utils.save_dict_to_json(test_metrics,
-                                    os.path.join(args.outdir, args.arch, "save_resume", "test_best_metrics.json"))
+                                    os.path.join(args.outdir, args.arch, "save_model", "test_best_metrics.json"))
             shutil.copyfile(last_path, os.path.join(args.outdir, args.arch, "save_model", 'best.pth'))
 
 

@@ -102,7 +102,7 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
                                                               F.softmax(output_teacher / T, dim=1))
                 loss *= args.lambda_s
                 loss += (loss_kd * args.lambda_t * T ** 2)
-                loss_avgkd.update(loss_kd.item(), train_batch.size(0))
+                loss_avgkd.update(loss_kd.item())
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -242,7 +242,7 @@ if __name__ == '__main__':
             logging.info("- Found better accuracy")
             best_acc = test_acc
             best_path = os.path.join(args.outdir, args.arch, 'save_snapshot', 'best.pth')
-            torch.save(save_dic, last_path)
+            torch.save(save_dic, best_path)
 
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')

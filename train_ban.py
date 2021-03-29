@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
+from torch.optim.lr_scheduler import MultiStepLR
 
 import models
 from dataset import data_loader
@@ -30,6 +31,8 @@ parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 parser.add_argument('--temp', default=3.0, type=float, help='temperature scaling')
+parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
+                    help='Learning rate step gamma (default: 0.7)')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True  # 对于固定不变的网络可以起到优化作用
@@ -113,7 +116,8 @@ def evaluate(test_loader, model, criterion):
     return test_metrics
 
 
-def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model=None, gen=0):
+def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model=None, gen=0,
+                       scheduler=None):
     best_acc = 0.0
     for epoch in range(0, args.num_epochs):
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
@@ -131,6 +135,7 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, t
             best_model_weight = os.path.join(args.outdir, args.model, "save_gen_model",
                                              "models" + str(gen) + ".pth.tar")
             torch.save(save_dic, best_model_weight)
+        scheduler.step()
 
 
 def ensemble_infer_test(test_loader, model_dir, model, criterion, num_classes, test_num):
@@ -141,7 +146,7 @@ def ensemble_infer_test(test_loader, model_dir, model, criterion, num_classes, t
 
     weights = glob.glob(os.path.join(model_dir, "*.pth.tar"))
     weights = sorted(weights)
-    weights = weights[len(weights) - test_num:-1]
+    weights = weights[- test_num:]
     # 采用平均加和
     with torch.no_grad():
         for idx, (inputs, targets) in enumerate(test_loader):
@@ -149,7 +154,7 @@ def ensemble_infer_test(test_loader, model_dir, model, criterion, num_classes, t
             inputs, targets = inputs.to(device), targets.to(device)
             final_ans = torch.zeros(size=(targets.size()[0], num_classes)).to(device)
             for weight in weights:
-                model.load_state_dict(torch.load(weight))
+                model.load_state_dict(torch.load(weight)['state_dict'])
                 model.eval()
                 outputs = model(inputs)
                 final_ans = final_ans + outputs
@@ -232,7 +237,9 @@ if __name__ == '__main__':
             criterion = nn.CrossEntropyLoss()
             optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True,
                                   weight_decay=args.wd)
-            train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model, gen)
+            scheduler = MultiStepLR(optimizer, milestones=[args.num_epochs * 0.5, args.num_epochs * 0.75],
+                                    gamma=args.gamma, verbose=True)
+            train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model, gen, scheduler)
 
             teacher_model = generate_model(model_folder, num_classes)
             last_model_weight = os.path.join(args.outdir, args.model, 'save_gen_model',
@@ -243,6 +250,6 @@ if __name__ == '__main__':
 
     logging.info('Begin Ensemble Infer···')
     criterion = nn.CrossEntropyLoss()
-    wbh = ensemble_infer_test(test_loader, os.path.join(args.outdir, 'save_gen_model'),
+    wbh = ensemble_infer_test(test_loader, os.path.join(args.outdir, args.model, 'save_gen_model'),
                               generate_model(model_folder, num_classes), criterion, num_classes, args.test_num)
     logging.info('All tasks have been done!')
