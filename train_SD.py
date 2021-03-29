@@ -1,22 +1,19 @@
-import copy
-import os
 import argparse
-import shutil
+import copy
+import logging
 import math
+import os
+import time
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
-from tensorboardX import SummaryWriter
+import torch.optim as optim
+from tqdm import tqdm
 
 import models
-from dataset import data_loader
 import utils
-import time
-from tqdm import tqdm
-import logging
-import glob
+from dataset import data_loader
 
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Ensemble')
 parser.add_argument('--gpu', default='0,1', type=str)
@@ -98,7 +95,7 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
                     output_teacher = teacher(train_batch).detach()
                 # loss_kd = (- F.log_softmax(output_batch / T, 1) * output_teacher).sum(dim=1).mean() * T * T
                 # TODO:loss function可能是错的 与原论文存在出入
-                loss_kd = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch / T, dim=1),
+                loss_kd = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch, dim=1),
                                                               F.softmax(output_teacher / T, dim=1))
                 loss *= args.lambda_s
                 loss += (loss_kd * args.lambda_t * T ** 2)

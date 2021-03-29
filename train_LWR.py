@@ -27,7 +27,7 @@ parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
-                    help='Learning rate step gamma (default: 0.7)')
+                    help='Learning rate step gamma (default: 0.1)')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
 parser.add_argument('--temp', default=3.0, type=float, help='temperature scaling')

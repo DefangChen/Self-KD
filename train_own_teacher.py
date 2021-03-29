@@ -1,20 +1,18 @@
-import os
 import argparse
+import logging
+import os
 import shutil
+import time
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-from tensorboardX import SummaryWriter
-
-from models.model_cifar import resnet_own
-from dataset import data_loader
-import utils
-import time
+from torch.optim.lr_scheduler import MultiStepLR
 from tqdm import tqdm
-import logging
-import glob
+
+import utils
+from dataset import data_loader
+from models.model_cifar import resnet_own
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 training')
 parser.add_argument("--wd", type=float, default=1e-4)
@@ -35,7 +33,8 @@ parser.add_argument('--lr', default=0.1, type=float,
 parser.add_argument('--momentum', default=0.9, type=float,
                     help='momentum')
 parser.add_argument('--dropout', default=0., type=float)
-
+parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
+                    help='Learning rate step gamma (default: 0.1)')
 # dest表示参数的别名
 parser.add_argument('--resume', default='', type=str,
                     help='path to  latest checkpoint (default: None)')
@@ -63,8 +62,6 @@ else:
 def train(train_loader, model, optimizer, criterion, current_epoch):
     model.train()
     end = time.time()
-    step = 0
-    batch_time = utils.AverageMeter()
     data_time = utils.AverageMeter()
     losses = utils.AverageMeter()
     middle1_losses = utils.AverageMeter()
@@ -83,7 +80,7 @@ def train(train_loader, model, optimizer, criterion, current_epoch):
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
 
-    utils.adjust_learning_rate(args, optimizer, current_epoch)
+    # utils.adjust_learning_rate(args, optimizer, current_epoch)
     with tqdm(total=len(train_loader)) as t:
         for i, (input, target) in enumerate(train_loader):
             data_time.update(time.time() - end)
@@ -211,7 +208,7 @@ def evaluate(test_loader, model, criterion):
     return test_metrics
 
 
-def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion):
+def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, scheduler):
     start_epoch = 0
     best_acc = 0.0
 
@@ -236,6 +233,7 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion):
             utils.save_dict_to_json(test_metrics,
                                     os.path.join(args.outdir, args.arch, "save_model", "test_best_metrics.json"))
             shutil.copyfile(last_path, os.path.join(args.outdir, args.arch, "save_model", 'best.pth'))
+        scheduler.step()
 
 
 if __name__ == '__main__':
@@ -295,7 +293,8 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
+    scheduler = MultiStepLR(optimizer, milestones=[150, 225], gamma=args.gamma, verbose=True)
 
     logging.info("Starting training for {} epoch(s)".format(args.num_epochs))
-    train_and_evaluate(model, train_loader, test_loader, optimizer, criterion)
+    train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, scheduler)
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
