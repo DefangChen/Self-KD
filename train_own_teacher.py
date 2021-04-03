@@ -12,13 +12,13 @@ from tqdm import tqdm
 
 import utils
 from dataset import data_loader
-from models.model_cifar import resnet_own
+from models.model_cifar import resnet_own2
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 training')
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--gpu', default='4,5', type=str)
 parser.add_argument('--outdir', default='save_own_teacher', type=str)
-parser.add_argument('--arch', type=str, default='multi_resnet50_kd',
+parser.add_argument('--arch', type=str, default='resnet32',
                     help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100',
                     help='dataset choice')
@@ -59,24 +59,25 @@ else:
     device = "cpu"
 
 
-def train(train_loader, model, optimizer, criterion, current_epoch):
+def train(train_loader, model, optimizer, criterion):
     model.train()
     end = time.time()
     data_time = utils.AverageMeter()
     losses = utils.AverageMeter()
     middle1_losses = utils.AverageMeter()
     middle2_losses = utils.AverageMeter()
-    middle3_losses = utils.AverageMeter()
+
     losses1_kd = utils.AverageMeter()
     losses2_kd = utils.AverageMeter()
-    losses3_kd = utils.AverageMeter()
+
+    total_losses = utils.AverageMeter()
+
     feature_losses_1 = utils.AverageMeter()
     feature_losses_2 = utils.AverageMeter()
-    feature_losses_3 = utils.AverageMeter()
-    total_losses = utils.AverageMeter()
+
     middle1_top1 = utils.AverageMeter()
     middle2_top1 = utils.AverageMeter()
-    middle3_top1 = utils.AverageMeter()
+
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
 
@@ -86,41 +87,34 @@ def train(train_loader, model, optimizer, criterion, current_epoch):
             data_time.update(time.time() - end)
             input = input.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
-            output, middle_output1, middle_output2, middle_output3, final_fea, middle1_fea, middle2_fea, middle3_fea = model(
-                input)
+            output, middle_output1, middle_output2, final_fea, middle1_fea, middle2_fea = model(input)
 
             # label loss
             loss = criterion(output, target)
             losses.update(loss.item())
+
             middle1_loss = criterion(middle_output1, target)
             middle1_losses.update(middle1_loss.item())
             middle2_loss = criterion(middle_output2, target)
             middle2_losses.update(middle2_loss.item())
-            middle3_loss = criterion(middle_output3, target)
-            middle3_losses.update(middle3_loss.item())
 
+            # KD loss
             temp4 = output / args.temperature
             temp4 = torch.softmax(temp4, dim=1)  # 做KD用的softmax后的输出
 
-            # KD loss
             loss1by4 = utils.kd_loss_function(middle_output1, temp4.detach(), args) * (args.temperature ** 2)
             losses1_kd.update(loss1by4.item())
             loss2by4 = utils.kd_loss_function(middle_output2, temp4.detach(), args) * (args.temperature ** 2)
             losses2_kd.update(loss2by4.item())
-            loss3by4 = utils.kd_loss_function(middle_output3, temp4.detach(), args) * (args.temperature ** 2)
-            losses3_kd.update(loss3by4.item())
 
             # L2 loss from features TODO:feature_map_loss可能存在bug 没有取平均
-            feature_loss_1 = utils.feature_loss_function(middle1_fea, final_fea.detach())
+            feature_loss_1 = utils.feature_loss_function(middle1_fea, final_fea.detach()) / input.size(0)
             feature_losses_1.update(feature_loss_1.item())
-            feature_loss_2 = utils.feature_loss_function(middle2_fea, final_fea.detach())
+            feature_loss_2 = utils.feature_loss_function(middle2_fea, final_fea.detach()) / input.size(0)
             feature_losses_2.update(feature_loss_2.item())
-            feature_loss_3 = utils.feature_loss_function(middle3_fea, final_fea.detach())
-            feature_losses_3.update(feature_loss_3.item())
 
-            total_loss = (1 - args.alpha) * (loss + middle1_loss + middle2_loss + middle3_loss) + \
-                         args.alpha * (loss1by4 + loss2by4 + loss3by4) + \
-                         args.beta * (feature_loss_1 + feature_loss_2 + feature_loss_3)
+            total_loss = (1 - args.alpha) * (loss + middle1_loss + middle2_loss) + args.alpha * (loss1by4 + loss2by4) + \
+                         args.beta * (feature_loss_1 + feature_loss_2)
             total_losses.update(total_loss.item())
 
             metrics = utils.accuracy(output, target, topk=(1, 5))
@@ -130,8 +124,6 @@ def train(train_loader, model, optimizer, criterion, current_epoch):
             middle1_top1.update(middle1_prec1[0].item())
             middle2_prec1 = utils.accuracy(middle_output2, target, topk=(1,))
             middle2_top1.update(middle2_prec1[0].item())
-            middle3_prec1 = utils.accuracy(middle_output3, target, topk=(1,))
-            middle3_top1.update(middle3_prec1[0].item())
 
             optimizer.zero_grad()
             total_loss.backward()  # 反向传播
@@ -142,9 +134,9 @@ def train(train_loader, model, optimizer, criterion, current_epoch):
         train_metrics = {'train_loss': total_losses.value(),
                          'train_accTop1': accTop1_avg.value(),
                          'train_accTop5': accTop5_avg.value(),
-                         'middle_losses': middle1_losses.value() + middle2_losses.value() + middle3_losses.value(),
-                         'losses_kd': losses1_kd.value() + losses2_kd.value() + losses3_kd.value(),
-                         'feature_losses': feature_losses_1.value() + feature_losses_2.value() + feature_losses_3.value(),
+                         'middle_losses': middle1_losses.value() + middle2_losses.value(),
+                         'losses_kd': losses1_kd.value() + losses2_kd.value(),
+                         'feature_losses': feature_losses_1.value() + feature_losses_2.value(),
                          'time': time.time() - end, }
 
         metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
@@ -155,12 +147,13 @@ def train(train_loader, model, optimizer, criterion, current_epoch):
 def evaluate(test_loader, model, criterion):
     batch_time = utils.AverageMeter()
     losses = utils.AverageMeter()
+
     middle1_losses = utils.AverageMeter()
     middle2_losses = utils.AverageMeter()
-    middle3_losses = utils.AverageMeter()
+
     middle1_top1 = utils.AverageMeter()
     middle2_top1 = utils.AverageMeter()
-    middle3_top1 = utils.AverageMeter()
+
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
 
@@ -171,8 +164,7 @@ def evaluate(test_loader, model, criterion):
         target = target.cuda(non_blocking=True)
         input = input.cuda(non_blocking=True)
 
-        output, middle_output1, middle_output2, middle_output3, \
-        final_fea, middle1_fea, middle2_fea, middle3_fea = model(input)
+        output, middle_output1, middle_output2, final_fea, middle1_fea, middle2_fea = model(input)
 
         loss = criterion(output, target)
         losses.update(loss.item())
@@ -180,8 +172,6 @@ def evaluate(test_loader, model, criterion):
         middle1_losses.update(middle1_loss.item())
         middle2_loss = criterion(middle_output2, target)
         middle2_losses.update(middle2_loss.item())
-        middle3_loss = criterion(middle_output3, target)
-        middle3_losses.update(middle3_loss.item())
 
         prec = utils.accuracy(output.data, target, topk=(1, 5))
         accTop1_avg.update(prec[0].item())
@@ -191,8 +181,6 @@ def evaluate(test_loader, model, criterion):
         middle1_top1.update(middle1_prec1[0].item())
         middle2_prec1 = utils.accuracy(middle_output2, target, topk=(1,))
         middle2_top1.update(middle2_prec1[0].item())
-        middle3_prec1 = utils.accuracy(middle_output3, target, topk=(1,))
-        middle3_top1.update(middle3_prec1[0].item())
         batch_time.update(time.time() - end)
         end = time.time()
 
@@ -214,7 +202,7 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, s
 
     for epoch in range(start_epoch, args.num_epochs):
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
-        train_metrics = train(train_loader, model, optimizer, criterion, epoch)
+        train_metrics = train(train_loader, model, optimizer, criterion)
         test_metrics = evaluate(test_loader, model, criterion)
 
         last_path = os.path.join(args.outdir, args.arch, "save_model", 'last.pth')
@@ -266,10 +254,10 @@ if __name__ == '__main__':
     train_loader, test_loader = data_loader.dataloader(data_name=args.dataset, batch_size=args.batch_size, root=root)
     logging.info("- Done.")
 
-    if args.arch == "multi_resnet50_kd":
-        model = resnet_own.multi_resnet50_kd(num_classes)
-    elif args.arch == "multi_resnet18_kd":
-        model = resnet_own.multi_resnet18_kd(num_classes)
+    if args.arch == "resnet32":
+        model = resnet_own2.resnet32(num_classes=num_classes)
+    elif args.arch == "wide_resnet20_8":
+        model = resnet_own2.wide_resnet20_8(num_classes=num_classes)
 
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model).to(device)

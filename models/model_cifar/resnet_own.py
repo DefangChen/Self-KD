@@ -58,6 +58,7 @@ class BasicBlock(nn.Module):
         output = self.relu(output)
         return output
 
+
 # BottleneckBlock由1x1->3x3->1x1
 class BottleneckBlock(nn.Module):
     expansion = 4
@@ -167,9 +168,8 @@ class Multi_ResNet(nn.Module):
         """
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                conv1x1(self.inplanes, planes * block.expansion, stride),
-                nn.BatchNorm2d(planes * block.expansion),)
+            downsample = nn.Sequential(conv1x1(self.inplanes, planes * block.expansion, stride),
+                                       nn.BatchNorm2d(planes * block.expansion), )
         layer = []
         layer.append(block(self.inplanes, planes, stride=stride, downsample=downsample))
         self.inplanes = planes * block.expansion
@@ -183,29 +183,30 @@ class Multi_ResNet(nn.Module):
         x = self.relu(x)
         # x = self.maxpool(x)
 
-        x = self.layer1(x)
-        middle_output1 = self.bottleneck1_1(x)
-        middle_output1 = self.avgpool1(middle_output1)
+        x = self.layer1(x)  # Bx64x32x32
+        middle_output1 = self.bottleneck1_1(x)  # Bx512x4x4
+        middle_output1 = self.avgpool1(middle_output1)  # Bx512x1x1
         middle1_fea = middle_output1
         middle_output1 = torch.flatten(middle_output1, 1)  # 从第一个维度开始推平
         middle_output1 = self.middle_fc1(middle_output1)
 
-        x = self.layer2(x)
-        middle_output2 = self.bottleneck2_1(x)
+        x = self.layer2(x)  # Bx128x16x16
+        middle_output2 = self.bottleneck2_1(x)  # Bx512x4x4
         middle_output2 = self.avgpool2(middle_output2)
         middle2_fea = middle_output2
         middle_output2 = torch.flatten(middle_output2, 1)
         middle_output2 = self.middle_fc2(middle_output2)
 
-        x = self.layer3(x)
-        middle_output3 = self.bottleneck3_1(x)
+        x = self.layer3(x)  # Bx256x8x8
+        middle_output3 = self.bottleneck3_1(x)  # Bx512x4x4
         middle_output3 = self.avgpool3(middle_output3)
         middle3_fea = middle_output3
+
         middle_output3 = torch.flatten(middle_output3, 1)
         middle_output3 = self.middle_fc3(middle_output3)
 
-        x = self.layer4(x)
-        x = self.avgpool(x)
+        x = self.layer4(x)  # Bx512x4x4
+        x = self.avgpool(x)  # Bx512x1x1
         final_fea = x
         x = torch.flatten(x, 1)
         x = self.fc(x)

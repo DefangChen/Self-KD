@@ -95,7 +95,7 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
                     output_teacher = teacher(train_batch).detach()
                 # loss_kd = (- F.log_softmax(output_batch / T, 1) * output_teacher).sum(dim=1).mean() * T * T
                 # TODO:loss function可能是错的 与原论文存在出入
-                loss_kd = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch, dim=1),
+                loss_kd = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch/T, dim=1),
                                                               F.softmax(output_teacher / T, dim=1))
                 loss *= args.lambda_s
                 loss += (loss_kd * args.lambda_t * T ** 2)

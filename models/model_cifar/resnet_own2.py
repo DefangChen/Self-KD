@@ -109,9 +109,30 @@ class Bottleneck(nn.Module):
         return out
 
 
+class SepConv(nn.Module):
+    def __init__(self, channel_in, channel_out, kernel_size=3, stride=2, padding=1, affine=True):
+        super().__init__()
+        self.op = nn.Sequential(
+            nn.Conv2d(channel_in, channel_in, kernel_size=kernel_size, stride=stride, padding=padding,
+                      groups=channel_in, bias=False),
+            nn.Conv2d(channel_in, channel_in, kernel_size=1, padding=0, bias=False),
+            nn.BatchNorm2d(channel_in, affine=affine),
+            nn.ReLU(inplace=False),
+
+            nn.Conv2d(channel_in, channel_in, kernel_size=kernel_size, stride=1, padding=padding, groups=channel_in,
+                      bias=False),
+            nn.Conv2d(channel_in, channel_out, kernel_size=1, padding=0, bias=False),
+            nn.BatchNorm2d(channel_out, affine=affine),
+            nn.ReLU(inplace=False),
+        )
+
+    def forward(self, x):
+        return self.op(x)
+
+
 class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=10, zero_init_residual=False, groups=1,
-                 width_per_group=64, replace_stride_with_dilation=None, norm_layer=None, KD=False):
+                 width_per_group=64, replace_stride_with_dilation=None, norm_layer=None):
         super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -136,9 +157,56 @@ class ResNet(nn.Module):
         self.layer1 = self._make_layer(block, 16, layers[0])
         self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 64, layers[2], stride=2)
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(64 * block.expansion, num_classes)
-        self.KD = KD
+
+        self.scala1 = nn.Sequential(
+            SepConv(
+                channel_in=16 * block.expansion,
+                channel_out=32 * block.expansion
+            ),
+            SepConv(
+                channel_in=32 * block.expansion,
+                channel_out=64 * block.expansion
+            ),
+            nn.AdaptiveAvgPool2d((1, 1))
+        )
+
+        self.scala2 = nn.Sequential(
+            SepConv(
+                channel_in=32 * block.expansion,
+                channel_out=64 * block.expansion,
+            ),
+            nn.AdaptiveAvgPool2d((1, 1))
+        )
+        self.scala3 = nn.AdaptiveAvgPool2d((1, 1))
+        # self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+        self.attention1 = nn.Sequential(
+            SepConv(
+                channel_in=16 * block.expansion,
+                channel_out=16 * block.expansion
+            ),
+            nn.BatchNorm2d(16 * block.expansion),
+            nn.ReLU(),
+            nn.Upsample(scale_factor=2, mode='bilinear'),  # 在2D方向上扩大两倍
+            nn.Sigmoid()
+        )
+
+        self.attention2 = nn.Sequential(
+            SepConv(
+                channel_in=32 * block.expansion,
+                channel_out=32 * block.expansion
+            ),
+            nn.BatchNorm2d(32 * block.expansion),
+            nn.ReLU(),
+            nn.Upsample(scale_factor=2, mode='bilinear'),
+            nn.Sigmoid()
+        )
+
+        # self.fc = nn.Linear(64 * block.expansion, num_classes)
+        self.fc1 = nn.Linear(64 * block.expansion, num_classes)
+        self.fc2 = nn.Linear(64 * block.expansion, num_classes)
+        self.fc3 = nn.Linear(64 * block.expansion, num_classes)
+
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
@@ -163,10 +231,12 @@ class ResNet(nn.Module):
             self.dilation *= stride
             stride = 1
         if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(conv1x1(self.inplanes, planes * block.expansion, stride), norm_layer(planes * block.expansion),)
+            downsample = nn.Sequential(conv1x1(self.inplanes, planes * block.expansion, stride),
+                                       norm_layer(planes * block.expansion), )
 
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample, self.groups, self.base_width, previous_dilation, norm_layer))
+        layers.append(block(self.inplanes, planes, stride, downsample, self.groups, self.base_width, previous_dilation,
+                            norm_layer))
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
             layers.append(block(self.inplanes, planes, groups=self.groups,
@@ -176,27 +246,40 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
+        feature_list = []
+
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)  # B x 16 x 32 x 32
 
         x = self.layer1(x)  # B x 16 x 32 x 32
-        x = self.layer2(x)  # B x 32 x 16 x 16
-        x = self.layer3(x)  # B x 64 x 8 x 8
+        fea1 = self.attention1(x)
+        fea1 = fea1 * x
+        feature_list.append(fea1)
 
-        x = self.avgpool(x)  # B x 64 x 1 x 1
-        x_f = x.view(x.size(0), -1)  # B x 64
-        x = self.fc(x_f)  # B x num_classes
-        if self.KD == True:
-            return x_f, x
-        else:
-            return x
+        x = self.layer2(x)  # B x 32 x 16 x 16
+        fea2 = self.attention2(x)
+        fea2 = fea2 * x
+        feature_list.append(fea2)
+
+        x = self.layer3(x)  # B x 64 x 8 x 8
+        feature_list.append(x)
+
+        out1_feature = self.scala1(feature_list[0]).view(x.size(0), -1)
+        out2_feature = self.scala2(feature_list[1]).view(x.size(0), -1)
+        out3_feature = self.scala3(feature_list[2]).view(x.size(0), -1)
+
+        out1 = self.fc1(out1_feature)
+        out2 = self.fc2(out2_feature)
+        out3 = self.fc3(out3_feature)
+
+        return out3, out1, out2, out3_feature, out2_feature, out1_feature
 
 
 def resnet32(pretrained=False, path=None, **kwargs):
     """
     Constructs a ResNet-32 models.
-    
+
     Args:
         pretrained (bool): If True, returns a models pre-trained.
     """
@@ -210,7 +293,7 @@ def resnet32(pretrained=False, path=None, **kwargs):
 def resnet110(pretrained=False, path=None, **kwargs):
     """
     Constructs a ResNet-110 models.
-    
+
     Args:
         pretrained (bool): If True, returns a models pre-trained.
     """
