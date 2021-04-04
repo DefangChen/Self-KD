@@ -77,13 +77,13 @@ class VGG(nn.Module):
 
         x = self.conv2(x)
         x = self.bn2(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
+        x = self.relu(x)  # Bx64x32x32
+        x = self.maxpool(x)  # Bx64x16x16
 
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        x = self.layer1(x)  # Bx128x8x8
+        x = self.layer2(x)  # Bx256x4x4
+        x = self.layer3(x)  # Bx512x2x2
+        x = self.layer4(x)  # Bx512x1x1
 
         x_f = x.view(x.size(0), -1)
         x = self.classifier(x_f)
