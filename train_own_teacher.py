@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 import utils
 from dataset import data_loader
-from models.model_cifar import resnet_own2
+from models.model_cifar import resnet_own
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 training')
 parser.add_argument("--wd", type=float, default=1e-4)

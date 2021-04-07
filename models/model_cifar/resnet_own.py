@@ -1,154 +1,211 @@
+"""
+ResNet for CIFAR-10/100 Dataset.
+
+Reference:
+1. https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
+2. https://github.com/facebook/fb.resnet.torch/blob/master/models/resnet.lua
+3. Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun
+Deep Residual Learning for Image Recognition. https://arxiv.org/abs/1512.03385
+
+"""
+
 import torch
 import torch.nn as nn
 
-
-def conv3x3(in_planes, out_planes, stride=1):
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+__all__ = ['ResNet', 'resnet32', 'resnet110', 'wide_resnet20_8']
 
 
-def conv1x1(in_planes, planes, stride=1):
-    return nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride, bias=False)
+def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
+    """3x3 convolution with padding"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                     padding=dilation, groups=groups, bias=False, dilation=dilation)
 
 
-def branchBottleNeck(channel_in, channel_out, kernel_size):
-    middle_channel = channel_out // 4
-    return nn.Sequential(
-        nn.Conv2d(channel_in, middle_channel, kernel_size=1, stride=1),
-        nn.BatchNorm2d(middle_channel),
-        nn.ReLU(),
-
-        nn.Conv2d(middle_channel, middle_channel, kernel_size=kernel_size, stride=kernel_size),
-        nn.BatchNorm2d(middle_channel),
-        nn.ReLU(),
-
-        nn.Conv2d(middle_channel, channel_out, kernel_size=1, stride=1),
-        nn.BatchNorm2d(channel_out),
-        nn.ReLU(),
-    )
+def conv1x1(in_planes, out_planes, stride=1):
+    """1x1 convolution"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
-# BasicBlock由两个3X3卷积层构成
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BasicBlock, self).__init__()
+    def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1, base_width=64, dilation=1,
+                 norm_layer=None):
+        super().__init__()
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+        if groups != 1 or base_width != 64:
+            raise ValueError('BasicBlock only supports groups=1 and base_width=64')
+        if dilation > 1:
+            raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
+        # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.relu = nn.ReLU(inplace=True)  # 对原变量覆盖
+        self.bn1 = norm_layer(planes)
+        self.relu = nn.ReLU(inplace=True)
         self.conv2 = conv3x3(planes, planes)
-        self.bn2 = nn.BatchNorm2d(planes)
+        self.bn2 = norm_layer(planes)
         self.downsample = downsample
-        self.stride = stride
+        self.stride = stride  # 这行是否有用
 
     def forward(self, x):
-        residual = x
+        identity = x
 
-        output = self.conv1(x)
-        output = self.bn1(output)
-        output = self.relu(output)
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
 
-        output = self.conv2(output)
-        output = self.bn2(output)
+        out = self.conv2(out)
+        out = self.bn2(out)
 
         if self.downsample is not None:
-            residual = self.downsample(x)  # 一般是通过1x1卷积层升/降维和降采样
+            identity = self.downsample(x)
 
-        output += residual
-        output = self.relu(output)
-        return output
+        out += identity
+        out = self.relu(out)
+
+        return out
 
 
-# BottleneckBlock由1x1->3x3->1x1
-class BottleneckBlock(nn.Module):
+class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BottleneckBlock, self).__init__()
-        self.conv1 = conv1x1(inplanes, planes)
-        self.bn1 = nn.BatchNorm2d(planes)
+    def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
+                 base_width=64, dilation=1, norm_layer=None):
+        super().__init__()
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+        width = int(planes * (base_width / 64.)) * groups
+        # Both self.conv2 and self.downsample layers downsample the input when stride != 1
+        self.conv1 = conv1x1(inplanes, width)
+        self.bn1 = norm_layer(width)
+        self.conv2 = conv3x3(width, width, stride, groups, dilation)
+        self.bn2 = norm_layer(width)
+        self.conv3 = conv1x1(width, planes * self.expansion)
+        self.bn3 = norm_layer(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
-
-        self.conv2 = conv3x3(planes, planes, stride)
-        self.bn2 = nn.BatchNorm2d(planes)
-
-        self.conv3 = conv1x1(planes, planes * self.expansion)
-        self.bn3 = nn.BatchNorm2d(planes * self.expansion)
-
         self.downsample = downsample
         self.stride = stride
 
     def forward(self, x):
-        residual = x
+        identity = x
 
-        output = self.conv1(x)
-        output = self.bn1(output)
-        output = self.relu(output)
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
 
-        output = self.conv2(output)
-        output = self.bn2(output)
-        output = self.relu(output)
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
 
-        output = self.conv3(output)
-        output = self.bn3(output)
+        out = self.conv3(out)
+        out = self.bn3(out)
 
         if self.downsample is not None:
-            residual = self.downsample(x)
+            identity = self.downsample(x)
 
-        output += residual
-        output = self.relu(output)
-        return output
+        out += identity
+        out = self.relu(out)
+
+        return out
 
 
-class Multi_ResNet(nn.Module):
-    """Resnet models
+class SepConv(nn.Module):
+    def __init__(self, channel_in, channel_out, kernel_size=3, stride=2, padding=1, affine=True):
+        super().__init__()
+        self.op = nn.Sequential(
+            nn.Conv2d(channel_in, channel_in, kernel_size=kernel_size, stride=stride, padding=padding,
+                      groups=channel_in, bias=False),
+            nn.Conv2d(channel_in, channel_in, kernel_size=1, padding=0, bias=False),
+            nn.BatchNorm2d(channel_in, affine=affine),
+            nn.ReLU(inplace=False),
 
-    Args:
-        block (class): block type, BasicBlock or BottleneckBlock
-        layers (int list): layer num in each block
-        num_classes (int): class num
-    """
+            nn.Conv2d(channel_in, channel_in, kernel_size=kernel_size, stride=1, padding=padding, groups=channel_in,
+                      bias=False),
+            nn.Conv2d(channel_in, channel_out, kernel_size=1, padding=0, bias=False),
+            nn.BatchNorm2d(channel_out, affine=affine),
+            nn.ReLU(inplace=False),
+        )
 
-    def __init__(self, block, layers, num_classes=1000):
-        super(Multi_ResNet, self).__init__()
-        self.inplanes = 64
+    def forward(self, x):
+        return self.op(x)
+
+
+class ResNet(nn.Module):
+    def __init__(self, block, layers, num_classes=10, zero_init_residual=False, groups=1,
+                 width_per_group=64, replace_stride_with_dilation=None, norm_layer=None):
+        super().__init__()
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+        self._norm_layer = norm_layer
+
+        self.inplanes = 16
+        self.dilation = 1  # 扩大
+        if replace_stride_with_dilation is None:
+            # each element in the tuple indicates if we should replace
+            # the 2x2 stride with a dilated convolution instead
+            replace_stride_with_dilation = [False, False, False]
+        if len(replace_stride_with_dilation) != 3:
+            raise ValueError("replace_stride_with_dilation should be None "
+                             "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
+
+        self.groups = groups
+        self.base_width = width_per_group
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
-        # self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        # self.maxpool = nn.MaxPool2d()
+        self.layer1 = self._make_layer(block, 16, layers[0])
+        self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
+        self.layer3 = self._make_layer(block, 64, layers[2], stride=2)
 
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
-
-        self.downsample1_1 = nn.Sequential(
-            conv1x1(64 * block.expansion, 512 * block.expansion, stride=8),
-            nn.BatchNorm2d(512 * block.expansion),
+        self.scala1 = nn.Sequential(
+            SepConv(
+                channel_in=16 * block.expansion,
+                channel_out=32 * block.expansion
+            ),
+            SepConv(
+                channel_in=32 * block.expansion,
+                channel_out=64 * block.expansion
+            ),
+            nn.AdaptiveAvgPool2d((1, 1))
         )
 
-        self.bottleneck1_1 = branchBottleNeck(64 * block.expansion, 512 * block.expansion, kernel_size=8)
-        self.avgpool1 = nn.AdaptiveAvgPool2d((1, 1))
-        self.middle_fc1 = nn.Linear(512 * block.expansion, num_classes)
-
-        self.downsample2_1 = nn.Sequential(
-            conv1x1(128 * block.expansion, 512 * block.expansion, stride=4),
-            nn.BatchNorm2d(512 * block.expansion),
+        self.scala2 = nn.Sequential(
+            SepConv(
+                channel_in=32 * block.expansion,
+                channel_out=64 * block.expansion,
+            ),
+            nn.AdaptiveAvgPool2d((1, 1))
         )
-        self.bottleneck2_1 = branchBottleNeck(128 * block.expansion, 512 * block.expansion, kernel_size=4)
-        self.avgpool2 = nn.AdaptiveAvgPool2d((1, 1))
-        self.middle_fc2 = nn.Linear(512 * block.expansion, num_classes)
+        self.scala3 = nn.AdaptiveAvgPool2d((1, 1))
+        # self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
-        self.downsample3_1 = nn.Sequential(
-            conv1x1(256 * block.expansion, 512 * block.expansion, stride=2),
-            nn.BatchNorm2d(512 * block.expansion),
+        self.attention1 = nn.Sequential(
+            SepConv(
+                channel_in=16 * block.expansion,
+                channel_out=16 * block.expansion
+            ),
+            nn.BatchNorm2d(16 * block.expansion),
+            nn.ReLU(),
+            nn.Upsample(scale_factor=2, mode='bilinear'),  # 在2D方向上扩大两倍
+            nn.Sigmoid()
         )
-        self.bottleneck3_1 = branchBottleNeck(256 * block.expansion, 512 * block.expansion, kernel_size=2)
-        self.avgpool3 = nn.AdaptiveAvgPool2d((1, 1))
-        self.middle_fc3 = nn.Linear(512 * block.expansion, num_classes)
 
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.attention2 = nn.Sequential(
+            SepConv(
+                channel_in=32 * block.expansion,
+                channel_out=32 * block.expansion
+            ),
+            nn.BatchNorm2d(32 * block.expansion),
+            nn.ReLU(),
+            nn.Upsample(scale_factor=2, mode='bilinear'),
+            nn.Sigmoid()
+        )
+
+        # self.fc = nn.Linear(64 * block.expansion, num_classes)
+        self.fc1 = nn.Linear(64 * block.expansion, num_classes)
+        self.fc2 = nn.Linear(64 * block.expansion, num_classes)
+        self.fc3 = nn.Linear(64 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -156,67 +213,108 @@ class Multi_ResNet(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
+        # Zero-initialize the last BN in each residual branch,
+        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
+        # This improves the models by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
+        if zero_init_residual:
+            for m in self.modules():
+                if isinstance(m, Bottleneck):
+                    nn.init.constant_(m.bn3.weight, 0)
+                elif isinstance(m, BasicBlock):
+                    nn.init.constant_(m.bn2.weight, 0)
 
-    def _make_layer(self, block, planes, layers, stride=1):
-        """A block with 'layers' layers
-
-        Args:
-            block (class): block type
-            planes (int): output channels = planes * expansion
-            layers (int): layer num in the block
-            stride (int): the first layer stride in the block
-        """
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
+        norm_layer = self._norm_layer
         downsample = None
+        previous_dilation = self.dilation
+        if dilate:
+            self.dilation *= stride
+            stride = 1
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(conv1x1(self.inplanes, planes * block.expansion, stride),
-                                       nn.BatchNorm2d(planes * block.expansion), )
-        layer = []
-        layer.append(block(self.inplanes, planes, stride=stride, downsample=downsample))
+                                       norm_layer(planes * block.expansion), )
+
+        layers = []
+        layers.append(block(self.inplanes, planes, stride, downsample, self.groups, self.base_width, previous_dilation,
+                            norm_layer))
         self.inplanes = planes * block.expansion
-        for i in range(1, layers):
-            layer.append(block(self.inplanes, planes))
-        return nn.Sequential(*layer)  # 在list前加*表示将列表中元素独立拆开传入函数
+        for _ in range(1, blocks):
+            layers.append(block(self.inplanes, planes, groups=self.groups,
+                                base_width=self.base_width, dilation=self.dilation,
+                                norm_layer=norm_layer))
+
+        return nn.Sequential(*layers)
 
     def forward(self, x):
+        feature_list = []
+
         x = self.conv1(x)
         x = self.bn1(x)
-        x = self.relu(x)
-        # x = self.maxpool(x)
+        x = self.relu(x)  # B x 16 x 32 x 32
 
-        x = self.layer1(x)  # Bx64x32x32
-        middle_output1 = self.bottleneck1_1(x)  # Bx512x4x4
-        middle_output1 = self.avgpool1(middle_output1)  # Bx512x1x1
-        middle1_fea = middle_output1
-        middle_output1 = torch.flatten(middle_output1, 1)  # 从第一个维度开始推平
-        middle_output1 = self.middle_fc1(middle_output1)
+        x = self.layer1(x)  # B x 16 x 32 x 32
+        fea1 = self.attention1(x)
+        fea1 = fea1 * x
+        feature_list.append(fea1)
 
-        x = self.layer2(x)  # Bx128x16x16
-        middle_output2 = self.bottleneck2_1(x)  # Bx512x4x4
-        middle_output2 = self.avgpool2(middle_output2)
-        middle2_fea = middle_output2
-        middle_output2 = torch.flatten(middle_output2, 1)
-        middle_output2 = self.middle_fc2(middle_output2)
+        x = self.layer2(x)  # B x 32 x 16 x 16
+        fea2 = self.attention2(x)
+        fea2 = fea2 * x
+        feature_list.append(fea2)
 
-        x = self.layer3(x)  # Bx256x8x8
-        middle_output3 = self.bottleneck3_1(x)  # Bx512x4x4
-        middle_output3 = self.avgpool3(middle_output3)
-        middle3_fea = middle_output3
+        x = self.layer3(x)  # B x 64 x 8 x 8
+        feature_list.append(x)
 
-        middle_output3 = torch.flatten(middle_output3, 1)
-        middle_output3 = self.middle_fc3(middle_output3)
+        out1_feature = self.scala1(feature_list[0]).view(x.size(0), -1)
+        out2_feature = self.scala2(feature_list[1]).view(x.size(0), -1)
+        out3_feature = self.scala3(feature_list[2]).view(x.size(0), -1)
 
-        x = self.layer4(x)  # Bx512x4x4
-        x = self.avgpool(x)  # Bx512x1x1
-        final_fea = x
-        x = torch.flatten(x, 1)
-        x = self.fc(x)
+        out1 = self.fc1(out1_feature)
+        out2 = self.fc2(out2_feature)
+        out3 = self.fc3(out3_feature)
 
-        return x, middle_output1, middle_output2, middle_output3, final_fea, middle1_fea, middle2_fea, middle3_fea
+        return out3, out1, out2, out3_feature, out2_feature, out1_feature
 
 
-def multi_resnet50_kd(num_classes=1000):
-    return Multi_ResNet(BottleneckBlock, [3, 4, 6, 3], num_classes=num_classes)
+def resnet32(pretrained=False, path=None, **kwargs):
+    """
+    Constructs a ResNet-32 models.
+
+    Args:
+        pretrained (bool): If True, returns a models pre-trained.
+    """
+
+    model = ResNet(BasicBlock, [5, 5, 5], **kwargs)
+    if pretrained:
+        model.load_state_dict((torch.load(path))['state_dict'])
+    return model
 
 
-def multi_resnet18_kd(num_classes=1000):
-    return Multi_ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes)
+def resnet110(pretrained=False, path=None, **kwargs):
+    """
+    Constructs a ResNet-110 models.
+
+    Args:
+        pretrained (bool): If True, returns a models pre-trained.
+    """
+
+    model = ResNet(Bottleneck, [12, 12, 12], **kwargs)
+    if pretrained:
+        model.load_state_dict((torch.load(path))['state_dict'])
+    return model
+
+
+def wide_resnet20_8(pretrained=False, path=None, **kwargs):
+    """Constructs a Wide ResNet-28-10 models.
+    The models is the same as ResNet except for the bottleneck number of channels
+    which is twice larger in every block. The number of channels in outer 1x1
+    convolutions is the same, e.g. last block in ResNet-50 has 2048-512-2048
+    channels, and in Wide ResNet-50-2 has 2048-1024-2048.
+    Args:
+        pretrained (bool): If True, returns a models pre-trained.
+    """
+
+    model = ResNet(Bottleneck, [2, 2, 2], width_per_group=64 * 8, **kwargs)
+    if pretrained:
+        model.load_state_dict((torch.load(path))['state_dict'])
+    return model

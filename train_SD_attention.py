@@ -15,11 +15,11 @@ import models
 import utils
 from dataset import data_loader
 
-parser = argparse.ArgumentParser(description='PyTorch Snapshot Ensemble')
+parser = argparse.ArgumentParser(description='PyTorch Snapshot Distillation with attention')
 parser.add_argument('--gpu', default='0,1', type=str)
-parser.add_argument('--outdir', default='save_SD', type=str)
-parser.add_argument('--arch', type=str, default='resnet32',
-                    help='models architecture')
+parser.add_argument('--atten', default=5, type=int)  # attention的数量
+parser.add_argument('--outdir', default='save_SD_atten', type=str)
+parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4 )')
@@ -64,15 +64,14 @@ def lr_snapshot(iteration, iteration_per_cycle, initial_lr=args.init_lr, lr_meth
     return lr, is_snapshot
 
 
-def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_epoch, iteration_per_cycle):
+def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_epoch, iteration_per_cycle):
     model.train()
-    if teacher is not None:
-        teacher.eval()
-    loss_avg = utils.AverageMeter()
+    loss_kd = utils.AverageMeter()
+    loss_total = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
-    loss_avgkd = utils.AverageMeter()
     end = time.time()
+    print("teacher num is ", len(teachers))
 
     cur_iter = cur_epoch * iteration_per_epoch
     with tqdm(total=len(train_loader)) as t:
@@ -87,43 +86,66 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
 
             train_batch = train_batch.cuda(non_blocking=True)
             labels_batch = labels_batch.cuda(non_blocking=True)
+            student_query, output = model(train_batch)
 
-            output_batch = model(train_batch)
-            loss = criterion(output_batch, labels_batch)
-            if teacher is not None:
+            loss1 = criterion(output, labels_batch)
+            student_query = student_query[:, None, :]  # Bx1x64
+
+            if len(teachers) != 0:
+                for teacher in teachers:
+                    teacher.eval()
                 with torch.no_grad():
-                    output_teacher = teacher(train_batch).detach()
-                # loss_kd = (- F.log_softmax(output_batch / T, 1) * output_teacher).sum(dim=1).mean() * T * T
-                loss_kd = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch/T, dim=1),
-                                                              F.softmax(output_teacher / T, dim=1))
-                loss *= args.lambda_s
-                loss += (loss_kd * args.lambda_t * T ** 2)
-                loss_avgkd.update(loss_kd.item())
+                    teacher_keys, teacher_outputs = teachers[0](train_batch)
+                    teacher_keys = teacher_keys[:, :, None]
+                    teacher_outputs = teacher_outputs[:, None, :]
+                    for teacher in teachers[1:]:
+                        temp1, temp2 = teacher(train_batch)
+                        temp1 = temp1[:, :, None]
+                        temp2 = temp2[:, None, :]
+                        teacher_keys = torch.cat([teacher_keys, temp1], -1)  # B x 64 x atten
+                        teacher_outputs = torch.cat([teacher_outputs, temp2], 1)  # B x atten x 100
+                    teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
+                    energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
+                    attention = F.softmax(energy, dim=-1)  # B x 1 x atten
+                    final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
+                    final_teacher = final_teacher.squeeze(1)  # Bx100
+                # TODO:loss2待检验···
+                # loss2 = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output / T, dim=1),
+                #                                             F.softmax(final_teacher, dim=1))
+                loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum()/final_teacher.size(0) * T**2
+                total_loss = loss1 + loss2
+            else:
+                loss2 = torch.tensor(0)
+                total_loss = loss1
+
             optimizer.zero_grad()
-            loss.backward()
+            total_loss.backward()
             optimizer.step()
 
             if is_snapshot:
                 logging.info("Snapshot!Generate a new teacher!")
-                teacher = copy.deepcopy(model)
-                teacher.eval()
+                teacher_new = copy.deepcopy(model)
+                teachers.append(teacher_new)
+                if len(teachers) > args.atten:
+                    teachers = teachers[-args.atten:]
 
-            metrics = utils.accuracy(output_batch, labels_batch, topk=(1, 5))  # metircs代表指标
+            metrics = utils.accuracy(output, labels_batch, topk=(1, 5))  # metircs代表指标
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
-            loss_avg.update(loss.item())
+            loss_total.update(total_loss.item())
+            loss_kd.update(loss2.item())
 
             t.update()
 
-    train_metrics = {'train_loss': loss_avg.value(),
-                     'train_accTop1': accTop1_avg.value(),
-                     'train_accTop5': accTop5_avg.value(),
-                     'loss_kd': loss_avgkd.value(),
-                     'time': time.time() - end}
+        train_metrics = {'train_loss': loss_total.value(),
+                         'train_accTop1': accTop1_avg.value(),
+                         'train_accTop5': accTop5_avg.value(),
+                         'loss_kd': loss_kd.value(),
+                         'time': time.time() - end}
 
-    metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
-    logging.info("- Train metrics: " + metrics_string)
-    return train_metrics, teacher
+        metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
+        logging.info("- Train metrics: " + metrics_string)
+        return train_metrics
 
 
 def evaluate(test_loader, model, criterion):
@@ -138,7 +160,7 @@ def evaluate(test_loader, model, criterion):
             test_batch = test_batch.cuda(non_blocking=True)
             labels_batch = labels_batch.cuda(non_blocking=True)
 
-            output_batch = model(test_batch)
+            output_batch = model(test_batch)[1]
             loss = criterion(output_batch, labels_batch)
 
             metrics = utils.accuracy(output_batch, labels_batch, topk=(1, 5))
@@ -158,7 +180,7 @@ def evaluate(test_loader, model, criterion):
 
 if __name__ == '__main__':
     begin_time = time.time()
-    args.lambda_s = 1 + 1 / args.T
+    args.lambda_s = 1 + 1 / args.T  # 硬标签损失的权重
     args.lambda_t = 1
 
     utils.solve_dir(args.outdir)
@@ -196,13 +218,10 @@ if __name__ == '__main__':
     model_fd = getattr(models, model_folder)
     if "resnet" in args.arch:
         model_cfg = getattr(model_fd, 'resnet')
-        model = getattr(model_cfg, args.arch)(num_classes=num_classes)
+        model = getattr(model_cfg, args.arch)(num_classes=num_classes, KD=True)
     elif "vgg" in args.arch:
         model_cfg = getattr(model_fd, 'vgg')
-        model = getattr(model_cfg, args.arch)(num_classes=num_classes, dropout=args.dropout)
-    elif "densenet" in args.arch:
-        model_cfg = getattr(model_fd, 'densenet')
-        model = getattr(model_cfg, args.arch)(num_classes=num_classes)
+        model = getattr(model_cfg, args.arch)(num_classes=num_classes, KD=True, dropout=args.dropout)
 
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model).to(device)
@@ -215,22 +234,22 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=args.init_lr, momentum=args.momentum, nesterov=True,
                           weight_decay=args.wd)
-    teacher = None
+
+    teachers = []
     best_acc = 0
+
     for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
-        train_metrics, teacher = train(train_loader, model, optimizer, teacher, i, args.T, iteration_per_epoch,
-                                       iteration_per_cycle)
+        train_metrics = train(train_loader, model, optimizer, teachers, i, args.T, iteration_per_epoch,
+                              iteration_per_cycle)
         test_metrics = evaluate(test_loader, model, criterion)
-        test_acc = test_metrics['test_accTop1']
 
+        test_acc = test_metrics['test_accTop1']
         save_dic = {'state_dict': model.state_dict(),
                     'optim_dict': optimizer.state_dict(),
                     'epoch': i + 1,
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
-        if teacher is not None:
-            save_dic['teacher_dict'] = teacher.state_dict()
         last_path = os.path.join(args.outdir, args.arch, 'save_snapshot', 'last.pth')
         torch.save(save_dic, last_path)
 
