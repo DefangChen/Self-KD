@@ -15,6 +15,8 @@ import models
 import utils
 from dataset import data_loader
 
+from tensorboardX import SummaryWriter
+
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Distillation with attention')
 parser.add_argument('--gpu', default='0,1', type=str)
 parser.add_argument('--atten', default=5, type=int)  # attention的数量
@@ -29,6 +31,7 @@ parser.add_argument('--batch-size', default=128, type=int,
                     help='mini-batch size (default: 128)')
 parser.add_argument('--init_lr', default=0.1, type=float,
                     help='initial learning rate')
+parser.add_argument('--warm_up', default=210, type=int)  # 热身阶段的epoch数量
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--wd', default=0.0001, type=float,
                     help='weight decay (default: 1e-4)')
@@ -62,6 +65,41 @@ def lr_snapshot(iteration, iteration_per_cycle, initial_lr=args.init_lr, lr_meth
     if (iteration - 1) % iteration_per_cycle == iteration_per_cycle - 1:
         is_snapshot = True
     return lr, is_snapshot
+
+
+def train_normal(train_loader, model, optimizer, criterion):
+    model.train()
+    loss_avg = utils.AverageMeter()
+    accTop1_avg = utils.AverageMeter()
+    accTop5_avg = utils.AverageMeter()
+    end = time.time()
+
+    with tqdm(total=len(train_loader)) as t:
+        for _, (train_batch, labels_batch) in enumerate(train_loader):
+            train_batch = train_batch.cuda(non_blocking=True)
+            labels_batch = labels_batch.cuda(non_blocking=True)
+            output_batch = model(train_batch)[1]
+            loss = criterion(output_batch, labels_batch)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            metrics = utils.accuracy(output_batch, labels_batch, topk=(1, 5))  # metircs代表指标
+            accTop1_avg.update(metrics[0].item())
+            accTop5_avg.update(metrics[1].item())
+            loss_avg.update(loss.item())
+
+            t.update()
+
+    train_metrics = {'train_loss': loss_avg.value(),
+                     'train_accTop1': accTop1_avg.value(),
+                     'train_accTop5': accTop5_avg.value(),
+                     'time': time.time() - end}
+
+    metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
+    logging.info("- Train metrics: " + metrics_string)
+    return train_metrics
 
 
 def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_epoch, iteration_per_cycle):
@@ -112,7 +150,7 @@ def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_
                 # TODO:loss2待检验···
                 # loss2 = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output / T, dim=1),
                 #                                             F.softmax(final_teacher, dim=1))
-                loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum()/final_teacher.size(0) * T**2
+                loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum(dim=1).mean() * T ** 2
                 total_loss = loss1 + loss2
             else:
                 loss2 = torch.tensor(0)
@@ -185,11 +223,11 @@ if __name__ == '__main__':
 
     utils.solve_dir(args.outdir)
     utils.solve_dir(os.path.join(args.outdir, args.arch))
-    utils.solve_dir(os.path.join(args.outdir, args.arch, 'save_snapshot'))
-    utils.solve_dir(os.path.join(args.outdir, args.arch, 'log'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten'+str(args.atten)+'+_cycle'+str(args.cycle), 'save_snapshot'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten'+str(args.atten)+'+cycle'+str(args.cycle), 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, args.arch, 'log', now_time + 'train.log'))
+    utils.set_logger(os.path.join(args.outdir, args.arch, 'atten'+str(args.atten)+'+cycle'+str(args.cycle),'log', now_time + 'train.log'))
 
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
@@ -237,12 +275,59 @@ if __name__ == '__main__':
 
     teachers = []
     best_acc = 0
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.warm_up,verbose=True)
 
-    for i in range(args.num_epochs):
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch))
+
+    for i in range(args.warm_up):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
+
+        writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
+
+        train_metrics = train_normal(train_loader, model, optimizer, criterion)
+
+        writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
+        writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
+        writer.add_scalar('Train/KD_Loss', 0, i + 1)
+
+        test_metrics = evaluate(test_loader, model, criterion)
+
+        writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
+        writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
+        writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
+
+        test_acc = test_metrics['test_accTop1']
+        if test_acc >= best_acc:
+            logging.info("- Found better accuracy")
+            best_acc = test_acc
+
+            teacher_new = copy.deepcopy(model)
+            teachers.append(teacher_new)
+            if len(teachers) > args.atten:
+                teachers = teachers[-args.atten:]
+
+        scheduler.step()
+
+    optimizer = optim.SGD(model.parameters(), lr=args.init_lr, momentum=args.momentum, nesterov=True,
+                          weight_decay=args.wd)
+
+    for i in range(args.warm_up, args.num_epochs):
+        logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
+
+        writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
+
         train_metrics = train(train_loader, model, optimizer, teachers, i, args.T, iteration_per_epoch,
                               iteration_per_cycle)
+
+        writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
+        writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
+        writer.add_scalar('Train/KD_Loss', train_metrics['loss_kd'], i + 1)
+
         test_metrics = evaluate(test_loader, model, criterion)
+
+        writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
+        writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
+        writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
 
         test_acc = test_metrics['test_accTop1']
         save_dic = {'state_dict': model.state_dict(),
@@ -250,14 +335,15 @@ if __name__ == '__main__':
                     'epoch': i + 1,
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
-        last_path = os.path.join(args.outdir, args.arch, 'save_snapshot', 'last.pth')
+        last_path = os.path.join(args.outdir, args.arch, 'atten'+str(args.atten)+'+cycle'+str(args.cycle),'save_snapshot', 'last.pth')
         torch.save(save_dic, last_path)
 
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            best_path = os.path.join(args.outdir, args.arch, 'save_snapshot', 'best.pth')
+            best_path = os.path.join(args.outdir, args.arch, 'atten'+str(args.atten)+'+cycle'+str(args.cycle),'save_snapshot', 'best.pth')
             torch.save(save_dic, best_path)
 
+    writer.close()
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')

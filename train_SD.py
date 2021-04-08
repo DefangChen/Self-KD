@@ -14,6 +14,7 @@ from tqdm import tqdm
 import models
 import utils
 from dataset import data_loader
+from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Ensemble')
 parser.add_argument('--gpu', default='0,1', type=str)
@@ -79,9 +80,9 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
         for i, (train_batch, labels_batch) in enumerate(train_loader):
             cur_iter += 1
             lr, is_snapshot = lr_snapshot(cur_iter, iteration_per_cycle)
-            if i % 100 == 0:
-                print("cur_iter: ", cur_iter)
-                logging.info("lr:{}".format(lr))
+            # if i % 100 == 0:
+            #     print("cur_iter: ", cur_iter)
+            #     logging.info("lr:{}".format(lr))
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr
 
@@ -93,9 +94,10 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
             if teacher is not None:
                 with torch.no_grad():
                     output_teacher = teacher(train_batch).detach()
-                # loss_kd = (- F.log_softmax(output_batch / T, 1) * output_teacher).sum(dim=1).mean() * T * T
-                loss_kd = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch/T, dim=1),
-                                                              F.softmax(output_teacher / T, dim=1))
+                loss_kd = (- F.log_softmax(output_batch / T, 1) * F.softmax(output_teacher / T, dim=1)).sum(
+                    dim=1).mean() * T ** 2
+                # loss_kd = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch/T, dim=1),
+                #                                               F.softmax(output_teacher / T, dim=1))
                 loss *= args.lambda_s
                 loss += (loss_kd * args.lambda_t * T ** 2)
                 loss_avgkd.update(loss_kd.item())
@@ -217,11 +219,26 @@ if __name__ == '__main__':
                           weight_decay=args.wd)
     teacher = None
     best_acc = 0
+
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch))
+
     for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
+        writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
+
         train_metrics, teacher = train(train_loader, model, optimizer, teacher, i, args.T, iteration_per_epoch,
                                        iteration_per_cycle)
+
+        writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
+        writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
+        writer.add_scalar('Train/KD_Loss', train_metrics['loss_kd'], i + 1)
+
         test_metrics = evaluate(test_loader, model, criterion)
+
+        writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
+        writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
+        writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
+
         test_acc = test_metrics['test_accTop1']
 
         save_dic = {'state_dict': model.state_dict(),
@@ -240,5 +257,6 @@ if __name__ == '__main__':
             best_path = os.path.join(args.outdir, args.arch, 'save_snapshot', 'best.pth')
             torch.save(save_dic, best_path)
 
+    writer.close()
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')
