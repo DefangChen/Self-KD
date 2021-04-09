@@ -17,8 +17,8 @@ from dataset import data_loader
 from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Ensemble')
-parser.add_argument('--gpu', default='0,1', type=str)
-parser.add_argument('--outdir', default='save_SD', type=str)
+parser.add_argument('--gpu', default='0', type=str)
+parser.add_argument('--outdir', default='save_SD_KL', type=str)
 parser.add_argument('--arch', type=str, default='resnet32',
                     help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
@@ -67,8 +67,7 @@ def lr_snapshot(iteration, iteration_per_cycle, initial_lr=args.init_lr, lr_meth
 
 def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_epoch, iteration_per_cycle):
     model.train()
-    if teacher is not None:
-        teacher.eval()
+
     loss_avg = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
@@ -80,9 +79,6 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
         for i, (train_batch, labels_batch) in enumerate(train_loader):
             cur_iter += 1
             lr, is_snapshot = lr_snapshot(cur_iter, iteration_per_cycle)
-            # if i % 100 == 0:
-            #     print("cur_iter: ", cur_iter)
-            #     logging.info("lr:{}".format(lr))
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr
 
@@ -90,17 +86,21 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
             labels_batch = labels_batch.cuda(non_blocking=True)
 
             output_batch = model(train_batch)
-            loss = criterion(output_batch, labels_batch)
+            loss1 = criterion(output_batch, labels_batch)
+
             if teacher is not None:
+                teacher.eval()
                 with torch.no_grad():
                     output_teacher = teacher(train_batch).detach()
-                loss_kd = (- F.log_softmax(output_batch / T, 1) * F.softmax(output_teacher / T, dim=1)).sum(
-                    dim=1).mean() * T ** 2
-                # loss_kd = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch/T, dim=1),
-                #                                               F.softmax(output_teacher / T, dim=1))*T**2
-                loss *= args.lambda_s
-                loss += (loss_kd * args.lambda_t)
-                loss_avgkd.update(loss_kd.item())
+                    # output_teacher = F.softmax(output_teacher / T, dim=1)
+                # loss2 = (- F.log_softmax(output_batch / T, 1) * F.softmax(output_teacher / T, dim=1)).sum(dim=1).mean() * T ** 2
+                loss2 = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch / T, dim=1),
+                                                            F.softmax(output_teacher / T, dim=1)) * T ** 2
+                loss = args.lambda_s * loss1 + args.lambda_t * loss2
+                loss_avgkd.update(loss2.item())
+            else:
+                loss = loss1
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -108,7 +108,6 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
             if is_snapshot:
                 logging.info("Snapshot!Generate a new teacher!")
                 teacher = copy.deepcopy(model)
-                teacher.eval()
 
             metrics = utils.accuracy(output_batch, labels_batch, topk=(1, 5))  # metircs代表指标
             accTop1_avg.update(metrics[0].item())
@@ -258,5 +257,6 @@ if __name__ == '__main__':
             torch.save(save_dic, best_path)
 
     writer.close()
+    print("best_acc is ", best_acc)
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')

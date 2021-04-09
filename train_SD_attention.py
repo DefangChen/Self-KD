@@ -39,7 +39,7 @@ parser.add_argument('--T', type=float, default=3,
                     help='distillation temperature (default: 1)')
 parser.add_argument('--lambda_s', type=float, default=1)
 parser.add_argument('--lambda_t', type=float, default=1)
-parser.add_argument('--cycle', type=float, default=4)
+parser.add_argument('--step', type=int, default=5)
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 args = parser.parse_args()
 
@@ -111,7 +111,7 @@ def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_
     end = time.time()
     print("teacher num is ", len(teachers))
 
-    cur_iter = cur_epoch * iteration_per_epoch
+    cur_iter = (cur_epoch-args.warm_up) * iteration_per_epoch
     with tqdm(total=len(train_loader)) as t:
         for i, (train_batch, labels_batch) in enumerate(train_loader):
             cur_iter += 1
@@ -223,11 +223,12 @@ if __name__ == '__main__':
 
     utils.solve_dir(args.outdir)
     utils.solve_dir(os.path.join(args.outdir, args.arch))
-    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten'+str(args.atten)+'+_cycle'+str(args.cycle), 'save_snapshot'))
-    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten'+str(args.atten)+'+cycle'+str(args.cycle), 'log'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step), 'save_snapshot'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step), 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, args.arch, 'atten'+str(args.atten)+'+cycle'+str(args.cycle),'log', now_time + 'train.log'))
+    utils.set_logger(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step), 'log',
+                                  now_time + 'train.log'))
 
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
@@ -249,8 +250,7 @@ if __name__ == '__main__':
     train_loader, test_loader = data_loader.dataloader(data_name=args.dataset, batch_size=args.batch_size, root=root)
     logging.info("- Done.")
 
-    iteration_total = args.num_epochs * len(train_loader)  # 迭代总次数
-    iteration_per_cycle = iteration_total // args.cycle  # 每个cycle的迭代次数
+    iteration_per_cycle = args.step * len(train_loader)  # 每个cycle的迭代次数
     iteration_per_epoch = len(train_loader)
 
     model_fd = getattr(models, model_folder)
@@ -275,9 +275,10 @@ if __name__ == '__main__':
 
     teachers = []
     best_acc = 0
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.warm_up,verbose=True)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.warm_up, verbose=True)
 
-    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch))
+    writer = SummaryWriter(
+        log_dir=os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step)))
 
     for i in range(args.warm_up):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
@@ -300,9 +301,9 @@ if __name__ == '__main__':
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-
             teacher_new = copy.deepcopy(model)
             teachers.append(teacher_new)
+            # TODO:!
             if len(teachers) > args.atten:
                 teachers = teachers[-args.atten:]
 
@@ -335,15 +336,18 @@ if __name__ == '__main__':
                     'epoch': i + 1,
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
-        last_path = os.path.join(args.outdir, args.arch, 'atten'+str(args.atten)+'+cycle'+str(args.cycle),'save_snapshot', 'last.pth')
+        last_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step),
+                                 'save_snapshot', 'last.pth')
         torch.save(save_dic, last_path)
 
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            best_path = os.path.join(args.outdir, args.arch, 'atten'+str(args.atten)+'+cycle'+str(args.cycle),'save_snapshot', 'best.pth')
+            best_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step),
+                                     'save_snapshot', 'best.pth')
             torch.save(save_dic, best_path)
 
     writer.close()
+    print("best_acc is ", best_acc)
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')
