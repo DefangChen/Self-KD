@@ -20,18 +20,18 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Distillation with attention')
 parser.add_argument('--gpu', default='0,1', type=str)
 parser.add_argument('--atten', default=5, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_SD_atten', type=str)
+parser.add_argument('--outdir', default='save_SD_atten_warm180', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4 )')
-parser.add_argument('--num_epochs', default=300, type=int,
+parser.add_argument('--num_epochs', default=500, type=int,
                     help='number of total iterations')
 parser.add_argument('--batch-size', default=128, type=int,
                     help='mini-batch size (default: 128)')
 parser.add_argument('--init_lr', default=0.1, type=float,
                     help='initial learning rate')
-parser.add_argument('--warm_up', default=210, type=int)  # 热身阶段的epoch数量
+parser.add_argument('--warm_up', default=180, type=int)  # 热身阶段的epoch数量
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--wd', default=0.0001, type=float,
                     help='weight decay (default: 1e-4)')
@@ -41,6 +41,8 @@ parser.add_argument('--lambda_s', type=float, default=1)
 parser.add_argument('--lambda_t', type=float, default=1)
 parser.add_argument('--step', type=int, default=5)
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
+parser.add_argument('--sd_KD', action='store_true',
+                    help='KD mode in snapshot distillation with model')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True
@@ -147,7 +149,11 @@ def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_
                 # TODO:loss2待检验···
                 # loss2 = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output / T, dim=1),
                 #                                             F.softmax(final_teacher, dim=1))
-                loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum(dim=1).mean() * T ** 2
+
+                if args.sd_KD == True:
+                    loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum(dim=1).mean() * T ** 2
+                else:
+                    loss2 = (- F.log_softmax(output, 1) * final_teacher).sum(dim=1).mean() * T ** 2
                 total_loss = loss1 + loss2
             else:
                 loss2 = torch.tensor(0)
@@ -221,11 +227,17 @@ if __name__ == '__main__':
     utils.solve_dir(args.outdir)
     utils.solve_dir(os.path.join(args.outdir, args.arch))
     utils.solve_dir(
-        os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step), 'save_snapshot'))
-    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step), 'log'))
+        os.path.join(args.outdir, args.arch,
+                     'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
+                     'save_snapshot'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch,
+                                 'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
+                                 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step), 'log',
+    utils.set_logger(os.path.join(args.outdir, args.arch,
+                                  'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
+                                  'log',
                                   now_time + 'train.log'))
 
     w = vars(args)
@@ -276,11 +288,12 @@ if __name__ == '__main__':
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.warm_up, verbose=True)
 
     writer = SummaryWriter(
-        log_dir=os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step)))
+        log_dir=os.path.join(args.outdir, args.arch,
+                             'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up)))
 
     for i in range(args.warm_up):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
-        logging.info('Teachers num is'.format(len(teachers)))
+        # logging.info('Teachers num is {}'.format(len(teachers)))
 
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
@@ -310,7 +323,7 @@ if __name__ == '__main__':
 
     for i in range(args.warm_up, args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
-        logging.info('Teachers num is'.format(len(teachers)))
+        # logging.info('Teachers num is {}'.format(len(teachers)))
 
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
@@ -333,18 +346,21 @@ if __name__ == '__main__':
                     'epoch': i + 1,
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
-        last_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step),
+        last_path = os.path.join(args.outdir, args.arch,
+                                 'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
                                  'save_snapshot', 'last.pth')
         torch.save(save_dic, last_path)
 
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            best_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step),
+            best_path = os.path.join(args.outdir, args.arch,
+                                     'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' +
+                                     str(args.warm_up),
                                      'save_snapshot', 'best.pth')
             torch.save(save_dic, best_path)
 
     writer.close()
-    print("best_acc is ", best_acc)
+    logging.info("best_acc is {}".format(best_acc))
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')
