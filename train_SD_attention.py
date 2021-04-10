@@ -109,16 +109,13 @@ def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
     end = time.time()
-    print("teacher num is ", len(teachers))
 
-    cur_iter = (cur_epoch-args.warm_up) * iteration_per_epoch
+    cur_iter = (cur_epoch - args.warm_up) * iteration_per_epoch
     with tqdm(total=len(train_loader)) as t:
         for i, (train_batch, labels_batch) in enumerate(train_loader):
             cur_iter += 1
             lr, is_snapshot = lr_snapshot(cur_iter, iteration_per_cycle)
-            if i % 100 == 0:
-                print("cur_iter: ", cur_iter)
-                logging.info("lr:{}".format(lr))
+
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr
 
@@ -183,7 +180,7 @@ def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_
 
         metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
         logging.info("- Train metrics: " + metrics_string)
-        return train_metrics
+        return train_metrics, teachers
 
 
 def evaluate(test_loader, model, criterion):
@@ -223,7 +220,8 @@ if __name__ == '__main__':
 
     utils.solve_dir(args.outdir)
     utils.solve_dir(os.path.join(args.outdir, args.arch))
-    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step), 'save_snapshot'))
+    utils.solve_dir(
+        os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step), 'save_snapshot'))
     utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten) + '_step' + str(args.step), 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
@@ -282,6 +280,7 @@ if __name__ == '__main__':
 
     for i in range(args.warm_up):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
+        logging.info('Teachers num is'.format(len(teachers)))
 
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
@@ -302,10 +301,7 @@ if __name__ == '__main__':
             logging.info("- Found better accuracy")
             best_acc = test_acc
             teacher_new = copy.deepcopy(model)
-            teachers.append(teacher_new)
-            # TODO:!
-            if len(teachers) > args.atten:
-                teachers = teachers[-args.atten:]
+            teachers = [teacher_new]
 
         scheduler.step()
 
@@ -314,11 +310,12 @@ if __name__ == '__main__':
 
     for i in range(args.warm_up, args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
+        logging.info('Teachers num is'.format(len(teachers)))
 
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
-        train_metrics = train(train_loader, model, optimizer, teachers, i, args.T, iteration_per_epoch,
-                              iteration_per_cycle)
+        train_metrics, teachers = train(train_loader, model, optimizer, teachers, i, args.T, iteration_per_epoch,
+                                        iteration_per_cycle)
 
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
