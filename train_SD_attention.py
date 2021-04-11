@@ -20,7 +20,7 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Distillation with attention')
 parser.add_argument('--gpu', default='0,1', type=str)
 parser.add_argument('--atten', default=5, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_SD_atten_V2', type=str)
+parser.add_argument('--outdir', default='save_SD_atten_V3', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
@@ -153,7 +153,7 @@ def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_
                 if args.sd_KD == True:
                     loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum(dim=1).mean() * T ** 2
                 else:
-                    loss2 = (- F.log_softmax(output, 1) * final_teacher).sum(dim=1).mean() * T ** 2
+                    loss2 = (- F.log_softmax(output, 1) * final_teacher).sum(dim=1).mean()
                 total_loss = loss1 + loss2
             else:
                 loss2 = torch.tensor(0)

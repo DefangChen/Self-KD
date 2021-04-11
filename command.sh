@@ -30,11 +30,11 @@ nohup python train_CSKD.py --gpu 0 --model resnet32 > CSKD_resnet32.out 2>&1 &
 nohup python train_CSKD.py --gpu 1 --model wide_resnet20_8 > CSKD_wide_resnet20_8.out 2>&1 &
 
 #5.SD(finished)
-nohup python train_SD.py --gpu 1 --arch vgg19 > SD_vgg19.out 2>&1 &
+nohup python train_SD.py --gpu 0 --arch vgg19 > SD_vgg19.out 2>&1 &
 
-nohup python train_SD.py --gpu 0 --arch resnet32 > SD_resnet32.out 2>&1 &
+nohup python train_SD.py --gpu 1 --arch resnet32 > SD_resnet32.out 2>&1 &
 
-nohup python train_SD.py --gpu 0 --arch wide_resnet20_8 >  SD_wide_resnet20_8.out 2>&1 &
+nohup python train_SD.py --gpu 3 --arch wide_resnet20_8 >  SD_wide_resnet20_8.out 2>&1 &
 
 #6.Be your own teacher
 nohup python train_own_teacher.py --gpu 1 --arch resnet32 > ownteacher_resnet32_kd.out 2>&1 &
@@ -47,10 +47,10 @@ nohup python train_SD_attention.py --atten 3 --gpu 1 --arch vgg19 --step 5 --war
 nohup python train_SD_attention.py --atten 5 --gpu 2 --arch vgg19 --step 3 --warm_up 210 > SD_step3_atten5_vgg19.out 2>&1 &
 nohup python train_SD_attention.py --atten 5 --gpu 3 --arch vgg19 --step 5 --warm_up 210 > SD_step5_atten5_vgg19.out 2>&1 &
 
-nohup python train_SD_attention.py --atten 3 --gpu 6 --arch resnet32 --step 3 --warm_up 210 > SD_step3_atten3_resnet32.out 2>&1 &
-nohup python train_SD_attention.py --atten 3 --gpu 6 --arch resnet32 --step 5 --warm_up 210 > SD_step5_atten3_resnet32.out 2>&1 &
-nohup python train_SD_attention.py --atten 5 --gpu 7 --arch resnet32 --step 3 --warm_up 210 > SD_step3_atten5_resnet32.out 2>&1 &
-nohup python train_SD_attention.py --atten 5 --gpu 7 --arch resnet32 --step 5 --warm_up 210 > SD_step5_atten5_resnet32.out 2>&1 &
+nohup python train_SD_attention.py --atten 3 --gpu 1 --arch resnet32 --step 3 --warm_up 210 > SD_step3_atten3_resnet32.out 2>&1 &
+nohup python train_SD_attention.py --atten 3 --gpu 2 --arch resnet32 --step 5 --warm_up 210 > SD_step5_atten3_resnet32.out 2>&1 &
+nohup python train_SD_attention.py --atten 5 --gpu 2 --arch resnet32 --step 3 --warm_up 210 > SD_step3_atten5_resnet32.out 2>&1 &
+nohup python train_SD_attention.py --atten 5 --gpu 2 --arch resnet32 --step 5 --warm_up 210 > SD_step5_atten5_resnet32.out 2>&1 &
 
 nohup python train_SD_attention.py --atten 3 --gpu 4 --arch wide_resnet20_8 --step 3 --warm_up 210 > SD_step3_atten3_wide_resnet20_8.out 2>&1 &
 nohup python train_SD_attention.py --atten 3 --gpu 5 --arch wide_resnet20_8 --step 5 --warm_up 210 > SD_step5_atten3_wide_resnet20_8.out 2>&1 &

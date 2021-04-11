@@ -18,7 +18,7 @@ from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Ensemble')
 parser.add_argument('--gpu', default='0', type=str)
-parser.add_argument('--outdir', default='save_SD_V2', type=str)
+parser.add_argument('--outdir', default='save_SD_V4', type=str)
 parser.add_argument('--arch', type=str, default='resnet32',
                     help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
@@ -95,7 +95,7 @@ def train(train_loader, model, optimizer, teacher, cur_epoch, T, iteration_per_e
                 # 除去了学生的温度系数
                 # loss2 = (- F.log_softmax(output_batch, 1) * F.softmax(output_teacher / T, dim=1)).sum(dim=1).mean()
                 loss2 = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch, dim=1),
-                                                            F.softmax(output_teacher / T, dim=1)) * T ** 2
+                                                            F.softmax(output_teacher / T, dim=1))
                 loss = args.lambda_s * loss1 + args.lambda_t * loss2
                 loss_avgkd.update(loss2.item())
             else:
