@@ -20,7 +20,7 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Distillation with attention')
 parser.add_argument('--gpu', default='0,1', type=str)
 parser.add_argument('--atten', default=5, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_SD_atten_warm180', type=str)
+parser.add_argument('--outdir', default='save_SD_atten_V2', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
@@ -314,7 +314,9 @@ if __name__ == '__main__':
             logging.info("- Found better accuracy")
             best_acc = test_acc
             teacher_new = copy.deepcopy(model)
-            teachers = [teacher_new]
+            teachers.append(teacher_new)
+            if len(teachers) > args.atten:
+                teachers = teachers[-args.atten:]
 
         scheduler.step()
 
