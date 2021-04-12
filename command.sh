@@ -57,8 +57,13 @@ nohup python train_SD_attention.py --atten 3 --gpu 2 --arch wide_resnet20_8 --st
 nohup python train_SD_attention.py --atten 5 --gpu 3 --arch wide_resnet20_8 --step 3 --warm_up 210 > SD_step3_atten5_wide_resnet20_8.out 2>&1 &
 nohup python train_SD_attention.py --atten 5 --gpu 3 --arch wide_resnet20_8 --step 5 --warm_up 210 > SD_step5_atten5_wide_resnet20_8.out 2>&1 &
 
+#8.New Method
+nohup python train_New.py --gpu 0 --model vgg19 > New_vgg19.out 2>&1 &
+
+nohup python train_New.py --gpu 1 --model resnet32 > New_resnet32.out 2>&1 &
+
+nohup python train_New.py --gpu 2 --model wide_resnet20_8 > New_wide_resnet20_8.out 2>&1 &
 
 
-# save_SD_atten_V5 添加权重系数
-# save_SD_atten_V3 未加loss1和loss2的权重
-# save_SD_atten_V2 未加loss1和loss2的权重 未除去KDloss的T方
+
+

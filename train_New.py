@@ -35,10 +35,10 @@ parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--wd', default=0.0001, type=float,
                     help='weight decay (default: 1e-4)')
 parser.add_argument('--T', type=float, default=3,
-                    help='distillation temperature (default: 1)')
+                    help='distillation temperature (default: 3)')
 parser.add_argument('--lambda_s', type=float, default=1)
 parser.add_argument('--lambda_t', type=float, default=1)
-parser.add_argument('--step', type=int, default=5)
+# parser.add_argument('--step', type=int, default=5)
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 parser.add_argument('--sd_KD', action='store_true', help='KD mode in snapshot distillation with model')
 args = parser.parse_args()
@@ -198,15 +198,15 @@ if __name__ == '__main__':
     utils.solve_dir(args.outdir)
     utils.solve_dir(os.path.join(args.outdir, args.arch))
     utils.solve_dir(os.path.join(args.outdir, args.arch,
-                                 'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
+                                 'atten' + str(args.atten) + '_warmup' + str(args.warm_up),
                                  'save_snapshot'))
     utils.solve_dir(os.path.join(args.outdir, args.arch,
-                                 'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
+                                 'atten' + str(args.atten) + '_warmup' + str(args.warm_up),
                                  'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     utils.set_logger(os.path.join(args.outdir, args.arch,
-                                  'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
+                                  'atten' + str(args.atten) + '_warmup' + str(args.warm_up),
                                   'log', now_time + 'train.log'))
 
     w = vars(args)
@@ -253,8 +253,7 @@ if __name__ == '__main__':
     best_acc = 0
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epochs)
     writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch,
-                                                'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(
-                                                    args.warm_up)))
+                                                'atten' + str(args.atten) + '_warmup' + str(args.warm_up)))
 
     for i in range(args.warm_up):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
@@ -301,15 +300,15 @@ if __name__ == '__main__':
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
         last_path = os.path.join(args.outdir, args.arch,
-                                 'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
+                                 'atten' + str(args.atten) + '_warmup' + str(args.warm_up),
                                  'save_snapshot', 'last.pth')
         torch.save(save_dic, last_path)
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
             best_path = os.path.join(args.outdir, args.arch,
-                                     'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' +
-                                     str(args.warm_up), 'save_snapshot', 'best.pth')
+                                     'atten' + str(args.atten) + '_warmup' + str(args.warm_up),
+                                     'save_snapshot', 'best.pth')
             torch.save(save_dic, best_path)
 
     writer.close()
