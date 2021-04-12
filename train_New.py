@@ -1,7 +1,6 @@
 import argparse
 import copy
 import logging
-import math
 import os
 import time
 
@@ -17,21 +16,21 @@ from dataset import data_loader
 
 from tensorboardX import SummaryWriter
 
-parser = argparse.ArgumentParser(description='PyTorch Snapshot Distillation with attention')
+parser = argparse.ArgumentParser(description='A New Method')
 parser.add_argument('--gpu', default='0,1', type=str)
-parser.add_argument('--atten', default=5, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_SD_atten_V5', type=str)
+parser.add_argument('--atten', default=3, type=int)  # attention的数量
+parser.add_argument('--outdir', default='save_New', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4 )')
-parser.add_argument('--num_epochs', default=500, type=int,
+parser.add_argument('--num_epochs', default=300, type=int,
                     help='number of total iterations')
-parser.add_argument('--batch-size', default=128, type=int,
+parser.add_argument('--batch_size', default=128, type=int,
                     help='mini-batch size (default: 128)')
 parser.add_argument('--init_lr', default=0.1, type=float,
                     help='initial learning rate')
-parser.add_argument('--warm_up', default=180, type=int)  # 热身阶段的epoch数量
+parser.add_argument('--warm_up', default=0, type=int)  # 热身阶段的epoch数量
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--wd', default=0.0001, type=float,
                     help='weight decay (default: 1e-4)')
@@ -41,8 +40,7 @@ parser.add_argument('--lambda_s', type=float, default=1)
 parser.add_argument('--lambda_t', type=float, default=1)
 parser.add_argument('--step', type=int, default=5)
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
-parser.add_argument('--sd_KD', action='store_true',
-                    help='KD mode in snapshot distillation with model')
+parser.add_argument('--sd_KD', action='store_true', help='KD mode in snapshot distillation with model')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True
@@ -51,22 +49,6 @@ if torch.cuda.is_available():
     device = torch.device("cuda")
 else:
     device = "cpu"
-
-
-# iteration代表第几次迭代；iteration_per_cycle代表每个mini_gen有多少个迭代
-def lr_snapshot(iteration, iteration_per_cycle, initial_lr=args.init_lr, lr_method='cosine'):
-    is_snapshot = False
-    if lr_method == 'cosine':
-        x = math.pi * ((iteration - 1) % iteration_per_cycle / iteration_per_cycle)
-        lr = initial_lr / 2 * (math.cos(x) + 1)
-    elif lr_method == 'linear':
-        t = ((iteration - 1) % iteration_per_cycle + 1) / iteration_per_cycle
-        lr = (1 - t) * initial_lr + t * 0.001
-    else:
-        pass
-    if (iteration - 1) % iteration_per_cycle == iteration_per_cycle - 1:
-        is_snapshot = True
-    return lr, is_snapshot
 
 
 def train_normal(train_loader, model, optimizer, criterion):
@@ -104,29 +86,23 @@ def train_normal(train_loader, model, optimizer, criterion):
     return train_metrics
 
 
-def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_epoch, iteration_per_cycle):
+def train(train_loader, model, optimizer, criterion, teachers, T):
     model.train()
-    loss_kd = utils.AverageMeter()
+
     loss_total = utils.AverageMeter()
+    loss_kd = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
     end = time.time()
 
-    cur_iter = (cur_epoch - args.warm_up) * iteration_per_epoch
     with tqdm(total=len(train_loader)) as t:
-        for i, (train_batch, labels_batch) in enumerate(train_loader):
-            cur_iter += 1
-            lr, is_snapshot = lr_snapshot(cur_iter, iteration_per_cycle)
+        for _, (train_batch, labels_batch) in enumerate(train_loader):
+            train_batch = train_batch.to(device)
+            labels_batch = labels_batch.to(device)
 
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr
-
-            train_batch = train_batch.cuda(non_blocking=True)
-            labels_batch = labels_batch.cuda(non_blocking=True)
             student_query, output = model(train_batch)
-
-            loss1 = criterion(output, labels_batch)
             student_query = student_query[:, None, :]  # Bx1x64
+            loss1 = criterion(output, labels_batch)
 
             if len(teachers) != 0:
                 for teacher in teachers:
@@ -146,9 +122,6 @@ def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_
                     attention = F.softmax(energy, dim=-1)  # B x 1 x atten
                     final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
                     final_teacher = final_teacher.squeeze(1)  # Bx100
-                # TODO:loss2待检验···
-                # loss2 = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output / T, dim=1),
-                #                                             F.softmax(final_teacher, dim=1))
 
                 if args.sd_KD == True:
                     loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum(dim=1).mean() * T ** 2
@@ -159,16 +132,9 @@ def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_
                 loss2 = torch.tensor(0)
                 total_loss = loss1
 
-            optimizer.zero_grad()
-            total_loss.backward()
-            optimizer.step()
-
-            if is_snapshot:
-                logging.info("Snapshot!Generate a new teacher!")
-                teacher_new = copy.deepcopy(model)
-                teachers.append(teacher_new)
-                if len(teachers) > args.atten:
-                    teachers = teachers[-args.atten:]
+                optimizer.zero_grad()
+                total_loss.backward()
+                optimizer.step()
 
             metrics = utils.accuracy(output, labels_batch, topk=(1, 5))  # metircs代表指标
             accTop1_avg.update(metrics[0].item())
@@ -178,15 +144,20 @@ def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_
 
             t.update()
 
-        train_metrics = {'train_loss': loss_total.value(),
-                         'train_accTop1': accTop1_avg.value(),
-                         'train_accTop5': accTop5_avg.value(),
-                         'loss_kd': loss_kd.value(),
-                         'time': time.time() - end}
+    new_teacher = copy.deepcopy(model)
+    teachers.append(new_teacher)
+    if len(teachers) > args.atten:
+        teachers = teachers[-args.atten:]
 
-        metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
-        logging.info("- Train metrics: " + metrics_string)
-        return train_metrics, teachers
+    train_metrics = {'train_loss': loss_total.value(),
+                     'train_accTop1': accTop1_avg.value(),
+                     'train_accTop5': accTop5_avg.value(),
+                     'loss_kd': loss_kd.value(),
+                     'time': time.time() - end}
+
+    metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
+    logging.info("- Train metrics: " + metrics_string)
+    return train_metrics, teachers
 
 
 def evaluate(test_loader, model, criterion):
@@ -198,10 +169,10 @@ def evaluate(test_loader, model, criterion):
 
     with torch.no_grad():
         for test_batch, labels_batch in test_loader:
-            test_batch = test_batch.cuda(non_blocking=True)
-            labels_batch = labels_batch.cuda(non_blocking=True)
+            test_batch = test_batch.to(device)
+            labels_batch = labels_batch.to(device)
 
-            output_batch = model(test_batch)[1]
+            output_batch = model(test_batch)
             loss = criterion(output_batch, labels_batch)
 
             metrics = utils.accuracy(output_batch, labels_batch, topk=(1, 5))
@@ -226,10 +197,9 @@ if __name__ == '__main__':
 
     utils.solve_dir(args.outdir)
     utils.solve_dir(os.path.join(args.outdir, args.arch))
-    utils.solve_dir(
-        os.path.join(args.outdir, args.arch,
-                     'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
-                     'save_snapshot'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch,
+                                 'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
+                                 'save_snapshot'))
     utils.solve_dir(os.path.join(args.outdir, args.arch,
                                  'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
                                  'log'))
@@ -237,8 +207,7 @@ if __name__ == '__main__':
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     utils.set_logger(os.path.join(args.outdir, args.arch,
                                   'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
-                                  'log',
-                                  now_time + 'train.log'))
+                                  'log', now_time + 'train.log'))
 
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
@@ -259,9 +228,6 @@ if __name__ == '__main__':
         root = './Data'
     train_loader, test_loader = data_loader.dataloader(data_name=args.dataset, batch_size=args.batch_size, root=root)
     logging.info("- Done.")
-
-    iteration_per_cycle = args.step * len(train_loader)  # 每个cycle的迭代次数
-    iteration_per_epoch = len(train_loader)
 
     model_fd = getattr(models, model_folder)
     if "resnet" in args.arch:
@@ -285,26 +251,21 @@ if __name__ == '__main__':
 
     teachers = []
     best_acc = 0
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.warm_up, verbose=True)
-
-    writer = SummaryWriter(
-        log_dir=os.path.join(args.outdir, args.arch,
-                             'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up)))
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epochs)
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch,
+                                                'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(
+                                                    args.warm_up)))
 
     for i in range(args.warm_up):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
-        # logging.info('Teachers num is {}'.format(len(teachers)))
-
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
         train_metrics = train_normal(train_loader, model, optimizer, criterion)
-
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
         writer.add_scalar('Train/KD_Loss', 0, i + 1)
 
         test_metrics = evaluate(test_loader, model, criterion)
-
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
         writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
         writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
@@ -320,24 +281,15 @@ if __name__ == '__main__':
 
         scheduler.step()
 
-    optimizer = optim.SGD(model.parameters(), lr=args.init_lr, momentum=args.momentum, nesterov=True,
-                          weight_decay=args.wd)
-
     for i in range(args.warm_up, args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
-        # logging.info('Teachers num is {}'.format(len(teachers)))
-
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
-
-        train_metrics, teachers = train(train_loader, model, optimizer, teachers, i, args.T, iteration_per_epoch,
-                                        iteration_per_cycle)
-
+        train_metrics, teachers = train(train_loader, model, optimizer, criterion, teachers, args.T)
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
         writer.add_scalar('Train/KD_Loss', train_metrics['loss_kd'], i + 1)
 
         test_metrics = evaluate(test_loader, model, criterion)
-
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
         writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
         writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
@@ -352,14 +304,12 @@ if __name__ == '__main__':
                                  'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' + str(args.warm_up),
                                  'save_snapshot', 'last.pth')
         torch.save(save_dic, last_path)
-
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
             best_path = os.path.join(args.outdir, args.arch,
                                      'atten' + str(args.atten) + '_step' + str(args.step) + '_warm_up' +
-                                     str(args.warm_up),
-                                     'save_snapshot', 'best.pth')
+                                     str(args.warm_up), 'save_snapshot', 'best.pth')
             torch.save(save_dic, best_path)
 
     writer.close()

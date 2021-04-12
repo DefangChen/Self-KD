@@ -12,14 +12,14 @@ import models
 import utils
 from dataset.dataloader_CSKD import load_dataset
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description='Pytorch CSKD')
 parser.add_argument('--gpu', default='0', type=str)
 parser.add_argument("--lr", type=float, default=0.1)
 parser.add_argument("--num_epochs", type=int, default=300)
 parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--dataset", type=str, default="CIFAR100")
 parser.add_argument("--outdir", type=str, default="save_CSKD_model")
-parser.add_argument("--model", type=str, default="CIFAR_ResNet18")
+parser.add_argument("--model", type=str, default="resnet32")
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
