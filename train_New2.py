@@ -16,10 +16,10 @@ from dataset import data_loader
 
 from tensorboardX import SummaryWriter
 
-parser = argparse.ArgumentParser(description='A New Method')
+parser = argparse.ArgumentParser(description='A New Method2')
 parser.add_argument('--gpu', default='0,1', type=str)
 parser.add_argument('--atten', default=3, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_New', type=str)
+parser.add_argument('--outdir', default='save_New2', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
@@ -32,15 +32,13 @@ parser.add_argument('--init_lr', default=0.1, type=float,
                     help='initial learning rate')
 parser.add_argument('--warm_up', default=0, type=int)  # 热身阶段的epoch数量
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
-parser.add_argument('--schedule', type=int, nargs='+', default=[150, 225],
-                    help='Decrease learning rate at these epochs.')
 parser.add_argument('--wd', default=0.0001, type=float,
                     help='weight decay (default: 1e-4)')
 parser.add_argument('--T', type=float, default=3,
                     help='distillation temperature (default: 3)')
-parser.add_argument('--lambda_s', type=float, default=1)
-parser.add_argument('--lambda_t', type=float, default=1)
-parser.add_argument('--k', type=float, default=5)
+parser.add_argument('--lambda_1', type=float, default=1)
+parser.add_argument('--lambda_2', type=float, default=1)
+parser.add_argument('--lambda_3', type=float, default=1)
 # parser.add_argument('--step', type=int, default=5)
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 parser.add_argument('--sd_KD', action='store_true', help='KD mode in snapshot distillation with model')
@@ -65,7 +63,7 @@ def train_normal(train_loader, model, optimizer, criterion):
         for _, (train_batch, labels_batch) in enumerate(train_loader):
             train_batch = train_batch.cuda(non_blocking=True)
             labels_batch = labels_batch.cuda(non_blocking=True)
-            output_batch = model(train_batch)[1]
+            output_batch = model(train_batch)[0]
             loss = criterion(output_batch, labels_batch)
 
             optimizer.zero_grad()
@@ -91,8 +89,11 @@ def train_normal(train_loader, model, optimizer, criterion):
 
 def train(train_loader, model, optimizer, criterion, teachers, T):
     model.train()
+
     loss_total = utils.AverageMeter()
-    loss_kd = utils.AverageMeter()
+    loss_label = utils.AverageMeter()
+    loss_fea = utils.AverageMeter()
+    loss_soft = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
     end = time.time()
@@ -102,36 +103,67 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
             train_batch = train_batch.to(device)
             labels_batch = labels_batch.to(device)
 
-            student_query, output = model(train_batch)
+            output, student_query, s_feas = model(train_batch)
             student_query = student_query[:, None, :]  # Bx1x64
             loss1 = criterion(output, labels_batch)
 
             if len(teachers) != 0:
+                teacher_feas = []
                 for teacher in teachers:
                     teacher.eval()
                 with torch.no_grad():
-                    teacher_keys, teacher_outputs = teachers[0](train_batch)
+                    teacher_outputs, teacher_keys, t_feas = teachers[0](train_batch)
                     teacher_keys = teacher_keys[:, :, None]
                     teacher_outputs = teacher_outputs[:, None, :]
+                    for i in range(len(t_feas)):
+                        teacher_feas.append([t_feas[i]])
+
                     for teacher in teachers[1:]:
-                        temp1, temp2 = teacher(train_batch)
+                        temp2, temp1, tfs = teacher(train_batch)
                         temp1 = temp1[:, :, None]
                         temp2 = temp2[:, None, :]
                         teacher_keys = torch.cat([teacher_keys, temp1], -1)  # B x 64 x atten
                         teacher_outputs = torch.cat([teacher_outputs, temp2], 1)  # B x atten x 100
+                        for i in range(len(tfs)):
+                            teacher_feas[i].append(tfs[i])
+
                     teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
                     energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
                     attention = F.softmax(energy, dim=-1)  # B x 1 x atten
                     final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
                     final_teacher = final_teacher.squeeze(1)  # Bx100
 
+                    final_feas = []
+                    for feas in teacher_feas:
+                        temp = feas[0]
+                        temp = temp[:, None, :, :, :]
+                        for j in feas[1:]:
+                            j = j[:, None, :, :, :]
+                            temp = torch.cat([temp, j], dim=1)
+                        final_feas.append(temp)
+                    for i in range(len(final_feas)):
+                        fea = final_feas[i]
+                        fea = torch.einsum('abcde, afb -> afcde', fea, attention)
+                        fea = torch.squeeze(fea)
+                        final_feas[i] = fea
+                    # TODO:此处一定有bug
+
                 if args.sd_KD == True:
                     loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum(dim=1).mean() * T ** 2
                 else:
                     loss2 = (- F.log_softmax(output, 1) * final_teacher).sum(dim=1).mean()
-                total_loss = loss1 + loss2
+                loss3 = torch.tensor(0.0).to(device)
+                for i in range(len(s_feas)):
+                    loss3 += torch.pow((s_feas[i] - final_feas[i]), 2).sum()
+                loss3 /= output.size(0)
+                print("loss1:", loss1)
+                print("loss2:", loss2)
+                print("loss3:", loss3)
+
+                total_loss = loss1 * args.lambda_1 + loss2 * args.lambda_2 + loss3 * args.lambda_3
             else:
                 loss2 = torch.tensor(0)
+                loss3 = torch.tensor(0)
                 total_loss = loss1
 
             optimizer.zero_grad()
@@ -142,19 +174,23 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
             loss_total.update(total_loss.item())
-            loss_kd.update(loss2.item())
+            loss_label.update(loss1.item())
+            loss_soft.update(loss2.item())
+            loss_fea.update(loss3.item())
 
             t.update()
 
-    # new_teacher = copy.deepcopy(model)
-    # teachers.append(new_teacher)
-    # if len(teachers) > args.atten:
-    #     teachers = teachers[-args.atten:]
+    new_teacher = copy.deepcopy(model)
+    teachers.append(new_teacher)
+    if len(teachers) > args.atten:
+        teachers = teachers[-args.atten:]
 
     train_metrics = {'train_loss': loss_total.value(),
                      'train_accTop1': accTop1_avg.value(),
                      'train_accTop5': accTop5_avg.value(),
-                     'loss_kd': loss_kd.value(),
+                     'loss_label': loss_label.value(),
+                     'loss_soft': loss_soft.value(),
+                     'loss_fea': loss_fea.value(),
                      'time': time.time() - end}
 
     metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
@@ -174,7 +210,7 @@ def evaluate(test_loader, model, criterion):
             test_batch = test_batch.to(device)
             labels_batch = labels_batch.to(device)
 
-            _, output_batch = model(test_batch)
+            output_batch = model(test_batch)[0]
             loss = criterion(output_batch, labels_batch)
 
             metrics = utils.accuracy(output_batch, labels_batch, topk=(1, 5))
@@ -194,8 +230,6 @@ def evaluate(test_loader, model, criterion):
 
 if __name__ == '__main__':
     begin_time = time.time()
-    args.lambda_s = 1 + 1 / args.T  # 硬标签损失的权重
-    args.lambda_t = 1
 
     utils.solve_dir(args.outdir)
     utils.solve_dir(os.path.join(args.outdir, args.arch))
@@ -233,10 +267,10 @@ if __name__ == '__main__':
 
     model_fd = getattr(models, model_folder)
     if "resnet" in args.arch:
-        model_cfg = getattr(model_fd, 'resnet')
+        model_cfg = getattr(model_fd, 'resnet_New2')
         model = getattr(model_cfg, args.arch)(num_classes=num_classes, KD=True)
     elif "vgg" in args.arch:
-        model_cfg = getattr(model_fd, 'vgg')
+        model_cfg = getattr(model_fd, 'vgg_New2')
         model = getattr(model_cfg, args.arch)(num_classes=num_classes, KD=True, dropout=args.dropout)
 
     if torch.cuda.device_count() > 1:
@@ -253,10 +287,9 @@ if __name__ == '__main__':
 
     teachers = []
     best_acc = 0
-    # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epochs)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epochs)
     writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch,
                                                 'atten' + str(args.atten) + '_warmup' + str(args.warm_up)))
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.schedule, gamma=0.1)
 
     for i in range(args.warm_up):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
@@ -265,7 +298,9 @@ if __name__ == '__main__':
         train_metrics = train_normal(train_loader, model, optimizer, criterion)
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
-        writer.add_scalar('Train/KD_Loss', 0, i + 1)
+        writer.add_scalar('Train/Label_Loss', train_metrics['train_loss'], i + 1)
+        writer.add_scalar('Train/Soft_Loss', 0, i + 1)
+        writer.add_scalar('Train/Feature_Loss', 0, i + 1)
 
         test_metrics = evaluate(test_loader, model, criterion)
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
@@ -289,18 +324,14 @@ if __name__ == '__main__':
         train_metrics, teachers = train(train_loader, model, optimizer, criterion, teachers, args.T)
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
-        writer.add_scalar('Train/KD_Loss', train_metrics['loss_kd'], i + 1)
+        writer.add_scalar('Train/Label_Loss', train_metrics['loss_label'], i + 1)
+        writer.add_scalar('Train/Soft_Loss', train_metrics['loss_soft'], i + 1)
+        writer.add_scalar('Train/Feature_Loss', train_metrics['loss_fea'], i + 1)
 
         test_metrics = evaluate(test_loader, model, criterion)
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
         writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
         writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
-
-        if (i + 1) % args.k == 0:
-            teacher_new = copy.deepcopy(model)
-            teachers.append(teacher_new)
-            if len(teachers) > args.atten:
-                teachers = teachers[-args.atten:]
 
         test_acc = test_metrics['test_accTop1']
         save_dic = {'state_dict': model.state_dict(),

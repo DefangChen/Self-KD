@@ -51,9 +51,9 @@ def train(train_loader, model, optimizer, criterion, accuracy, args):
     model.train()
 
     # summary for current training loop and a running average object for loss
-    loss_avg = utils.RunningAverage()
-    accTop1_avg = utils.RunningAverage()
-    accTop5_avg = utils.RunningAverage()
+    loss_avg = utils.AverageMeter()
+    accTop1_avg = utils.AverageMeter()
+    accTop5_avg = utils.AverageMeter()
     end = time.time()
 
     # Use tqdm for progress bar
@@ -96,9 +96,9 @@ def train(train_loader, model, optimizer, criterion, accuracy, args):
 def evaluate(test_loader, model, criterion, accuracy, args):
     # set models to evaluation mode
     model.eval()
-    loss_avg = utils.RunningAverage()
-    accTop1_avg = utils.RunningAverage()
-    accTop5_avg = utils.RunningAverage()
+    loss_avg = utils.AverageMeter()
+    accTop1_avg = utils.AverageMeter()
+    accTop5_avg = utils.AverageMeter()
     end = time.time()
 
     with torch.no_grad():
