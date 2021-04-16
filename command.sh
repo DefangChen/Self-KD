@@ -15,9 +15,9 @@ nohup python train_baseline.py --gpu 3 --model wide_resnet20_8 --outdir save_bas
 #2.LWR:(finished)
 nohup python train_LWR.py --gpu 1 --model vgg19 > LWR_vgg19.out 2>&1 &
 
-nohup python train_LWR.py --gpu 3 --model resnet32 > LWR_resnet32.out 2>&1 &
+nohup python train_LWR.py --gpu 1 --model resnet32 > LWR_resnet32.out 2>&1 &
 
-nohup python train_LWR.py --gpu 0 --model wide_resnet20_8 > LWR_wide_resnet20_8.out 2>&1 &
+nohup python train_LWR.py --gpu 2 --model wide_resnet20_8 > LWR_wide_resnet20_8.out 2>&1 &
 
 #3.ban(finished 可以增加lr调整的trick)
 nohup python train_ban.py --gpu 3 --model vgg19 > ban_vgg19.out 2>&1 &
@@ -46,25 +46,26 @@ nohup python train_own_teacher.py --gpu 1 --arch resnet32 > ownteacher_resnet32_
 nohup python train_own_teacher.py --gpu 0 --arch wide_resnet20_8 > ownteacher_wide_resnet20_8.out 2>&1 &
 
 #7.SD_atten
-nohup python train_SD_attention.py --atten 3 --gpu 0 --arch vgg19 --step 3 --warm_up 210 > SD_step3_atten3_vgg19.out 2>&1 &
-nohup python train_SD_attention.py --atten 3 --gpu 0 --arch vgg19 --step 5 --warm_up 210 > SD_step5_atten3_vgg19.out 2>&1 &
-nohup python train_SD_attention.py --atten 5 --gpu 1 --arch vgg19 --step 3 --warm_up 210 > SD_step3_atten5_vgg19.out 2>&1 &
-nohup python train_SD_attention.py --atten 5 --gpu 1 --arch vgg19 --step 5 --warm_up 210 > SD_step5_atten5_vgg19.out 2>&1 &
+nohup python train_SD_attention.py --atten 3 --gpu 0 --arch vgg19 --step 3 --warm_up 0 > SD_step3_atten3_vgg19.out 2>&1 &
+nohup python train_SD_attention.py --atten 3 --gpu 1 --arch vgg19 --step 5 --warm_up 0 > SD_step5_atten3_vgg19.out 2>&1 &
+nohup python train_SD_attention.py --atten 5 --gpu 2 --arch vgg19 --step 3 --warm_up 0 > SD_step3_atten5_vgg19.out 2>&1 &
+nohup python train_SD_attention.py --atten 5 --gpu 3 --arch vgg19 --step 5 --warm_up 0 > SD_step5_atten5_vgg19.out 2>&1 &
 
-nohup python train_SD_attention.py --atten 3 --gpu 4 --arch resnet32 --step 3 --warm_up 210 > SD_step3_atten3_resnet32.out 2>&1 &
-nohup python train_SD_attention.py --atten 3 --gpu 4 --arch resnet32 --step 5 --warm_up 210 > SD_step5_atten3_resnet32.out 2>&1 &
-nohup python train_SD_attention.py --atten 5 --gpu 5 --arch resnet32 --step 3 --warm_up 210 > SD_step3_atten5_resnet32.out 2>&1 &
-nohup python train_SD_attention.py --atten 5 --gpu 5 --arch resnet32 --step 5 --warm_up 210 > SD_step5_atten5_resnet32.out 2>&1 &
+nohup python train_SD_attention.py --atten 3 --gpu 1 --arch resnet32 --step 3 --warm_up 100 > SD_step3_atten3_resnet32.out 2>&1 &
+nohup python train_SD_attention.py --atten 3 --gpu 1 --arch resnet32 --step 5 --warm_up 100 > SD_step5_atten3_resnet32.out 2>&1 &
+nohup python train_SD_attention.py --atten 5 --gpu 5 --arch resnet32 --step 3 --warm_up 100 > SD_step3_atten5_resnet32.out 2>&1 &
+nohup python train_SD_attention.py --atten 5 --gpu 5 --arch resnet32 --step 5 --warm_up 100 > SD_step5_atten5_resnet32.out 2>&1 &
 
-nohup python train_SD_attention.py --atten 3 --gpu 6 --arch wide_resnet20_8 --step 3 --warm_up 210 > SD_step3_atten3_wide_resnet20_8.out 2>&1 &
-nohup python train_SD_attention.py --atten 3 --gpu 7 --arch wide_resnet20_8 --step 5 --warm_up 210 > SD_step5_atten3_wide_resnet20_8.out 2>&1 &
-nohup python train_SD_attention.py --atten 5 --gpu 5 --arch wide_resnet20_8 --step 3 --warm_up 210 > SD_step3_atten5_wide_resnet20_8.out 2>&1 &
-nohup python train_SD_attention.py --atten 5 --gpu 4 --arch wide_resnet20_8 --step 5 --warm_up 210 > SD_step5_atten5_wide_resnet20_8.out 2>&1 &
+nohup python train_SD_attention.py --atten 3 --gpu 4 --arch wide_resnet20_8 --step 3 --warm_up 100 > SD_step3_atten3_wide_resnet20_8.out 2>&1 &
+nohup python train_SD_attention.py --atten 3 --gpu 4 --arch wide_resnet20_8 --step 5 --warm_up 100 > SD_step5_atten3_wide_resnet20_8.out 2>&1 &
+nohup python train_SD_attention.py --atten 5 --gpu 0 --arch wide_resnet20_8 --step 3 --warm_up 100 > SD_step3_atten5_wide_resnet20_8.out 2>&1 &
+nohup python train_SD_attention.py --atten 5 --gpu 1 --arch wide_resnet20_8 --step 5 --warm_up 100 > SD_step5_atten5_wide_resnet20_8.out 2>&1 &
 
 #8.New Method
-nohup python train_New.py --gpu 4 --arch vgg19 --outdir save_New_1 > New_vgg19.out 2>&1 &
-nohup python train_New.py --gpu 4 --arch resnet32 --outdir save_New_1 > New_resnet32.out 2>&1 &
-nohup python train_New.py --gpu 4 --arch wide_resnet20_8 --outdir save_New_1 > New_wide_resnet20_8.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_4 --sd_KD > New_vgg19.out 2>&1 &
+nohup python train_New.py --gpu 3 --arch resnet32 --outdir save_New_V1 --sd_KD --atten 2 > New_resnet32_atten2.out 2>&1 &
+nohup python train_New.py --gpu 6 --arch wide_resnet20_8 --outdir save_New_4 --sd_KD > New_wide_resnet20_8.out 2>&1 &
+
 
 nohup python train_New.py --gpu 5 --arch vgg19 --outdir save_New_2 > New_vgg19.out 2>&1 &
 nohup python train_New.py --gpu 5 --arch resnet32 --outdir save_New_2 > New_resnet32.out 2>&1 &
@@ -76,8 +77,8 @@ nohup python train_New.py --gpu 6 --arch wide_resnet20_8 --outdir save_New_3 > N
 
 #8.New Method2
 nohup python train_New2.py --gpu 0 --arch vgg19 > New2_vgg19.out 2>&1 &
-nohup python train_New2.py --gpu 3 --arch resnet32 > New2_resnet32.out 2>&1 &
-nohup python train_New2.py --gpu 2 --arch wide_resnet20_8 > New2_wide_resnet20_8.out 2>&1 &
+nohup python train_New2.py --gpu 2 --arch resnet32 --outdir='save_New2_KD' --sd_KD > New2_resnet32.out 2>&1 &
+nohup python train_New2.py --gpu 1 --arch wide_resnet20_8 > New2_wide_resnet20_8.out 2>&1 &
 
 
 
@@ -93,3 +94,5 @@ nohup python train_New2.py --gpu 2 --arch wide_resnet20_8 > New2_wide_resnet20_8
 #nohup python test_SD_attention.py --gpu 6 --arch wide_resnet20_8 > test_atten_wide_resnet20_8.out 2>&1 &
 
 #scp -P 10103 -r wbh@10.76.2.231:/home/wbh/Self_KD /home/wbh
+
+nohup python change_LWR.py --gpu 0 --model resnet32 > change_LWR_resnet32.out 2>&1 &

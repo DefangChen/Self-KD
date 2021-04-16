@@ -19,7 +19,7 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser(description='A New Method')
 parser.add_argument('--gpu', default='0,1', type=str)
 parser.add_argument('--atten', default=3, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_New', type=str)
+parser.add_argument('--outdir', default='save_New_V1', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
@@ -30,7 +30,6 @@ parser.add_argument('--batch_size', default=128, type=int,
                     help='mini-batch size (default: 128)')
 parser.add_argument('--init_lr', default=0.1, type=float,
                     help='initial learning rate')
-parser.add_argument('--warm_up', default=0, type=int)  # 热身阶段的epoch数量
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--schedule', type=int, nargs='+', default=[150, 225],
                     help='Decrease learning rate at these epochs.')
@@ -38,10 +37,7 @@ parser.add_argument('--wd', default=0.0001, type=float,
                     help='weight decay (default: 1e-4)')
 parser.add_argument('--T', type=float, default=3,
                     help='distillation temperature (default: 3)')
-parser.add_argument('--lambda_s', type=float, default=1)
-parser.add_argument('--lambda_t', type=float, default=1)
 parser.add_argument('--k', type=float, default=5)
-# parser.add_argument('--step', type=int, default=5)
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 parser.add_argument('--sd_KD', action='store_true', help='KD mode in snapshot distillation with model')
 args = parser.parse_args()
@@ -54,45 +50,11 @@ else:
     device = "cpu"
 
 
-def train_normal(train_loader, model, optimizer, criterion):
-    model.train()
-    loss_avg = utils.AverageMeter()
-    accTop1_avg = utils.AverageMeter()
-    accTop5_avg = utils.AverageMeter()
-    end = time.time()
-
-    with tqdm(total=len(train_loader)) as t:
-        for _, (train_batch, labels_batch) in enumerate(train_loader):
-            train_batch = train_batch.cuda(non_blocking=True)
-            labels_batch = labels_batch.cuda(non_blocking=True)
-            output_batch = model(train_batch)[1]
-            loss = criterion(output_batch, labels_batch)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            metrics = utils.accuracy(output_batch, labels_batch, topk=(1, 5))  # metircs代表指标
-            accTop1_avg.update(metrics[0].item())
-            accTop5_avg.update(metrics[1].item())
-            loss_avg.update(loss.item())
-
-            t.update()
-
-    train_metrics = {'train_loss': loss_avg.value(),
-                     'train_accTop1': accTop1_avg.value(),
-                     'train_accTop5': accTop5_avg.value(),
-                     'time': time.time() - end}
-
-    metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
-    logging.info("- Train metrics: " + metrics_string)
-    return train_metrics
-
-
-def train(train_loader, model, optimizer, criterion, teachers, T):
+def train(train_loader, model, optimizer, criterion, teachers, T, cur_epoch):
     model.train()
     loss_total = utils.AverageMeter()
     loss_kd = utils.AverageMeter()
+    loss_label = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
     end = time.time()
@@ -122,14 +84,19 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
                     teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
                     energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
                     attention = F.softmax(energy, dim=-1)  # B x 1 x atten
+                    print("attention:", attention)
                     final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
                     final_teacher = final_teacher.squeeze(1)  # Bx100
+                final_teacher = final_teacher.detach()
 
+                alpha = 1 - 0.9 * (cur_epoch - cur_epoch % args.k) / args.num_epochs
                 if args.sd_KD == True:
-                    loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum(dim=1).mean() * T ** 2
+                    # loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum(dim=1).mean() * T ** 2
+                    loss2 = F.kl_div(F.log_softmax(output / T, dim=1), F.softmax(final_teacher / T, dim=1),
+                                     reduction='batchmean') * T ** 2
                 else:
                     loss2 = (- F.log_softmax(output, 1) * final_teacher).sum(dim=1).mean()
-                total_loss = loss1 + loss2
+                total_loss = loss1 * alpha + loss2 * (1 - alpha)
             else:
                 loss2 = torch.tensor(0)
                 total_loss = loss1
@@ -143,6 +110,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
             accTop5_avg.update(metrics[1].item())
             loss_total.update(total_loss.item())
             loss_kd.update(loss2.item())
+            loss_label.update(loss1.item())
 
             t.update()
 
@@ -154,6 +122,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
     train_metrics = {'train_loss': loss_total.value(),
                      'train_accTop1': accTop1_avg.value(),
                      'train_accTop5': accTop5_avg.value(),
+                     'label_loss': loss_label.value(),
                      'loss_kd': loss_kd.value(),
                      'time': time.time() - end}
 
@@ -194,21 +163,19 @@ def evaluate(test_loader, model, criterion):
 
 if __name__ == '__main__':
     begin_time = time.time()
-    args.lambda_s = 1 + 1 / args.T  # 硬标签损失的权重
-    args.lambda_t = 1
 
     utils.solve_dir(args.outdir)
     utils.solve_dir(os.path.join(args.outdir, args.arch))
     utils.solve_dir(os.path.join(args.outdir, args.arch,
-                                 'atten' + str(args.atten) + '_warmup' + str(args.warm_up),
+                                 'atten' + str(args.atten),
                                  'save_snapshot'))
     utils.solve_dir(os.path.join(args.outdir, args.arch,
-                                 'atten' + str(args.atten) + '_warmup' + str(args.warm_up),
+                                 'atten' + str(args.atten),
                                  'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     utils.set_logger(os.path.join(args.outdir, args.arch,
-                                  'atten' + str(args.atten) + '_warmup' + str(args.warm_up),
+                                  'atten' + str(args.atten),
                                   'log', now_time + 'train.log'))
 
     w = vars(args)
@@ -255,52 +222,29 @@ if __name__ == '__main__':
     best_acc = 0
     # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epochs)
     writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch,
-                                                'atten' + str(args.atten) + '_warmup' + str(args.warm_up)))
+                                                'atten' + str(args.atten)))
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.schedule, gamma=0.1)
 
-    for i in range(args.warm_up):
+    for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
-
-        train_metrics = train_normal(train_loader, model, optimizer, criterion)
-        writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
-        writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
-        writer.add_scalar('Train/KD_Loss', 0, i + 1)
-
-        test_metrics = evaluate(test_loader, model, criterion)
-        writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
-        writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
-        writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
-
-        test_acc = test_metrics['test_accTop1']
-        if test_acc >= best_acc:
-            logging.info("- Found better accuracy")
-            best_acc = test_acc
-            teacher_new = copy.deepcopy(model)
-            teachers.append(teacher_new)
-            if len(teachers) > args.atten:
-                teachers = teachers[-args.atten:]
-
-        scheduler.step()
-
-    for i in range(args.warm_up, args.num_epochs):
-        logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
-        writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
-        train_metrics, teachers = train(train_loader, model, optimizer, criterion, teachers, args.T)
-        writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
-        writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
-        writer.add_scalar('Train/KD_Loss', train_metrics['loss_kd'], i + 1)
-
-        test_metrics = evaluate(test_loader, model, criterion)
-        writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
-        writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
-        writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
 
         if (i + 1) % args.k == 0:
             teacher_new = copy.deepcopy(model)
             teachers.append(teacher_new)
             if len(teachers) > args.atten:
                 teachers = teachers[-args.atten:]
+
+        train_metrics, teachers = train(train_loader, model, optimizer, criterion, teachers, args.T, i)
+        writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
+        writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
+        writer.add_scalar('Train/KD_Loss', train_metrics['loss_kd'], i + 1)
+        writer.add_scalar('Train/Label_Loss', train_metrics['label_loss'], i + 1)
+
+        test_metrics = evaluate(test_loader, model, criterion)
+        writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
+        writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
+        writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
 
         test_acc = test_metrics['test_accTop1']
         save_dic = {'state_dict': model.state_dict(),
@@ -309,14 +253,13 @@ if __name__ == '__main__':
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
         last_path = os.path.join(args.outdir, args.arch,
-                                 'atten' + str(args.atten) + '_warmup' + str(args.warm_up),
+                                 'atten' + str(args.atten),
                                  'save_snapshot', 'last.pth')
         torch.save(save_dic, last_path)
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            best_path = os.path.join(args.outdir, args.arch,
-                                     'atten' + str(args.atten) + '_warmup' + str(args.warm_up),
+            best_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten),
                                      'save_snapshot', 'best.pth')
             torch.save(save_dic, best_path)
         scheduler.step()

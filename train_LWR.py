@@ -15,13 +15,15 @@ import torch.nn.functional as F
 from utils import LWR
 from torch.optim.lr_scheduler import MultiStepLR
 
+from tensorboardX import SummaryWriter
+
 parser = argparse.ArgumentParser(description='PyTorch LWR Example')
 parser.add_argument('--gpu', default='0', type=str)
 parser.add_argument("--lr", type=float, default=0.1)
 parser.add_argument("--num_epochs", type=int, default=300)
 parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--dataset", type=str, default="CIFAR100")
-parser.add_argument("--outdir", type=str, default="save_LWR")
+parser.add_argument("--outdir", type=str, default="save_LWR2")
 parser.add_argument("--model", type=str, default="vgg19")
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
@@ -162,10 +164,21 @@ if __name__ == '__main__':
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
     scheduler = MultiStepLR(optimizer, milestones=[150, 225], gamma=args.gamma, verbose=True)
     best_acc = 0
+
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.model))
+
     for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
+        writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
         train_metrics = train(model, train_loader, optimizer, lwr, i + 1)
+        writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
+        writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
+
         test_metrics = evaluate(model, test_loader)
+        writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
+        writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
+        writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
+
         test_acc = test_metrics['test_accTop1']
         save_dic = {'state_dict': model.state_dict(),
                     'optim_dict': optimizer.state_dict(),
@@ -181,5 +194,6 @@ if __name__ == '__main__':
             torch.save(save_dic, last_path)
         scheduler.step()
 
+    writer.close()
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')

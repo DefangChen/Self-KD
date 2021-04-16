@@ -20,12 +20,12 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Distillation with attention')
 parser.add_argument('--gpu', default='0,1', type=str)
 parser.add_argument('--atten', default=5, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_SD_atten_V5', type=str)
+parser.add_argument('--outdir', default='save_SD_atten1', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4 )')
-parser.add_argument('--num_epochs', default=500, type=int,
+parser.add_argument('--num_epochs', default=300, type=int,
                     help='number of total iterations')
 parser.add_argument('--batch-size', default=128, type=int,
                     help='mini-batch size (default: 128)')
@@ -146,10 +146,8 @@ def train(train_loader, model, optimizer, teachers, cur_epoch, T, iteration_per_
                     attention = F.softmax(energy, dim=-1)  # B x 1 x atten
                     final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
                     final_teacher = final_teacher.squeeze(1)  # Bx100
-                # TODO:loss2待检验···
-                # loss2 = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output / T, dim=1),
-                #                                             F.softmax(final_teacher, dim=1))
 
+                final_teacher = final_teacher.detach()
                 if args.sd_KD == True:
                     loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum(dim=1).mean() * T ** 2
                 else:
