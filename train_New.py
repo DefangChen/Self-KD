@@ -19,7 +19,7 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser(description='A New Method')
 parser.add_argument('--gpu', default='0,1', type=str)
 parser.add_argument('--atten', default=3, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_New_V1', type=str)
+parser.add_argument('--outdir', default='save_New_V2', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
@@ -39,7 +39,7 @@ parser.add_argument('--T', type=float, default=3,
                     help='distillation temperature (default: 3)')
 parser.add_argument('--k', type=float, default=5)
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
-parser.add_argument('--sd_KD', action='store_true', help='KD mode in snapshot distillation with model')
+# parser.add_argument('--sd_KD', action='store_true', help='KD mode in snapshot distillation with model')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True
@@ -50,7 +50,7 @@ else:
     device = "cpu"
 
 
-def train(train_loader, model, optimizer, criterion, teachers, T, cur_epoch):
+def train(train_loader, model, optimizer, criterion, teachers, T):
     model.train()
     loss_total = utils.AverageMeter()
     loss_kd = utils.AverageMeter()
@@ -66,37 +66,31 @@ def train(train_loader, model, optimizer, criterion, teachers, T, cur_epoch):
 
             student_query, output = model(train_batch)
             student_query = student_query[:, None, :]  # Bx1x64
+            student_query = student_query
             loss1 = criterion(output, labels_batch)
 
             if len(teachers) != 0:
-                for teacher in teachers:
-                    teacher.eval()
-                with torch.no_grad():
-                    teacher_keys, teacher_outputs = teachers[0](train_batch)
-                    teacher_keys = teacher_keys[:, :, None]
-                    teacher_outputs = teacher_outputs[:, None, :]
-                    for teacher in teachers[1:]:
-                        temp1, temp2 = teacher(train_batch)
-                        temp1 = temp1[:, :, None]
-                        temp2 = temp2[:, None, :]
-                        teacher_keys = torch.cat([teacher_keys, temp1], -1)  # B x 64 x atten
-                        teacher_outputs = torch.cat([teacher_outputs, temp2], 1)  # B x atten x 100
-                    teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
-                    energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
-                    attention = F.softmax(energy, dim=-1)  # B x 1 x atten
-                    print("attention:", attention)
-                    final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
-                    final_teacher = final_teacher.squeeze(1)  # Bx100
+                teacher_keys, teacher_outputs = teachers[0](train_batch)
+                teacher_keys = teacher_keys[:, :, None]
+                teacher_outputs = teacher_outputs[:, None, :]
+                for teacher in teachers[1:]:
+                    temp1, temp2 = teacher(train_batch)
+                    temp1 = temp1[:, :, None]
+                    temp2 = temp2[:, None, :]
+                    teacher_keys = torch.cat([teacher_keys, temp1], -1)  # B x 64 x atten
+                    teacher_outputs = torch.cat([teacher_outputs, temp2], 1)  # B x atten x 100
+                teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
+                energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
+                attention = F.softmax(energy, dim=-1)  # B x 1 x atten
+                # print("attention:", attention)
+                final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
+                final_teacher = final_teacher.squeeze(1)  # Bx100
                 final_teacher = final_teacher.detach()
 
-                alpha = 1 - 0.9 * (cur_epoch - cur_epoch % args.k) / args.num_epochs
-                if args.sd_KD == True:
-                    # loss2 = (- F.log_softmax(output / T, 1) * final_teacher).sum(dim=1).mean() * T ** 2
-                    loss2 = F.kl_div(F.log_softmax(output / T, dim=1), F.softmax(final_teacher / T, dim=1),
-                                     reduction='batchmean') * T ** 2
-                else:
-                    loss2 = (- F.log_softmax(output, 1) * final_teacher).sum(dim=1).mean()
-                total_loss = loss1 * alpha + loss2 * (1 - alpha)
+                # alpha = 1 - 0.9 * (cur_epoch - cur_epoch % args.k) / args.num_epochs
+                loss2 = F.kl_div(F.log_softmax(output / T, dim=1), F.softmax(final_teacher / T, dim=1),
+                                 reduction='batchmean')
+                total_loss = loss1 + loss2 * T ** 2
             else:
                 loss2 = torch.tensor(0)
                 total_loss = loss1
@@ -113,11 +107,6 @@ def train(train_loader, model, optimizer, criterion, teachers, T, cur_epoch):
             loss_label.update(loss1.item())
 
             t.update()
-
-    # new_teacher = copy.deepcopy(model)
-    # teachers.append(new_teacher)
-    # if len(teachers) > args.atten:
-    #     teachers = teachers[-args.atten:]
 
     train_metrics = {'train_loss': loss_total.value(),
                      'train_accTop1': accTop1_avg.value(),
@@ -166,17 +155,11 @@ if __name__ == '__main__':
 
     utils.solve_dir(args.outdir)
     utils.solve_dir(os.path.join(args.outdir, args.arch))
-    utils.solve_dir(os.path.join(args.outdir, args.arch,
-                                 'atten' + str(args.atten),
-                                 'save_snapshot'))
-    utils.solve_dir(os.path.join(args.outdir, args.arch,
-                                 'atten' + str(args.atten),
-                                 'log'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'save_snapshot'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, args.arch,
-                                  'atten' + str(args.atten),
-                                  'log', now_time + 'train.log'))
+    utils.set_logger(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'log', now_time + 'train.log'))
 
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
@@ -220,31 +203,30 @@ if __name__ == '__main__':
 
     teachers = []
     best_acc = 0
-    # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epochs)
-    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch,
-                                                'atten' + str(args.atten)))
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch, 'atten' + str(args.atten)))
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.schedule, gamma=0.1)
 
     for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
-        if (i + 1) % args.k == 0:
-            teacher_new = copy.deepcopy(model)
-            teachers.append(teacher_new)
-            if len(teachers) > args.atten:
-                teachers = teachers[-args.atten:]
-
-        train_metrics, teachers = train(train_loader, model, optimizer, criterion, teachers, args.T, i)
+        train_metrics, teachers = train(train_loader, model, optimizer, criterion, teachers, args.T)
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
-        writer.add_scalar('Train/KD_Loss', train_metrics['loss_kd'], i + 1)
-        writer.add_scalar('Train/Label_Loss', train_metrics['label_loss'], i + 1)
+        writer.add_scalar('Train/kd_loss', train_metrics['loss_kd'], i + 1)
+        writer.add_scalar('Train/label_loss', train_metrics['label_loss'], i + 1)
 
         test_metrics = evaluate(test_loader, model, criterion)
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
         writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
         writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
+
+        # TODO:怀疑是deepcopy有问题，待求证！
+        if (i + 1) % args.k == 0:
+            teacher_new = copy.deepcopy(model)
+            teachers.append(teacher_new)
+            if len(teachers) > args.atten:
+                teachers = teachers[-args.atten:]
 
         test_acc = test_metrics['test_accTop1']
         save_dic = {'state_dict': model.state_dict(),
@@ -252,15 +234,12 @@ if __name__ == '__main__':
                     'epoch': i + 1,
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
-        last_path = os.path.join(args.outdir, args.arch,
-                                 'atten' + str(args.atten),
-                                 'save_snapshot', 'last.pth')
+        last_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'save_snapshot', 'last.pth')
         torch.save(save_dic, last_path)
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            best_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten),
-                                     'save_snapshot', 'best.pth')
+            best_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'save_snapshot', 'best.pth')
             torch.save(save_dic, best_path)
         scheduler.step()
 
