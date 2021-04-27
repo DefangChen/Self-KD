@@ -19,7 +19,7 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser(description='A New Method')
 parser.add_argument('--gpu', default='0,1', type=str)
 parser.add_argument('--atten', default=3, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_New_V2', type=str)
+parser.add_argument('--outdir', default='save_New_V1', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
@@ -52,6 +52,7 @@ else:
 
 def train(train_loader, model, optimizer, criterion, teachers, T):
     model.train()
+
     loss_total = utils.AverageMeter()
     loss_kd = utils.AverageMeter()
     loss_label = utils.AverageMeter()
@@ -66,10 +67,11 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
 
             student_query, output = model(train_batch)
             student_query = student_query[:, None, :]  # Bx1x64
-            student_query = student_query
             loss1 = criterion(output, labels_batch)
 
             if len(teachers) != 0:
+                for teacher in teachers:
+                    teacher.eval()
                 teacher_keys, teacher_outputs = teachers[0](train_batch)
                 teacher_keys = teacher_keys[:, :, None]
                 teacher_outputs = teacher_outputs[:, None, :]
@@ -81,16 +83,14 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
                     teacher_outputs = torch.cat([teacher_outputs, temp2], 1)  # B x atten x 100
                 teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
                 energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
-                attention = F.softmax(energy, dim=-1)  # B x 1 x atten
-                # print("attention:", attention)
+                attention = F.softmax(energy, dim=-1)  # B x 1 x atten 权重归一化
                 final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
                 final_teacher = final_teacher.squeeze(1)  # Bx100
                 final_teacher = final_teacher.detach()
 
                 # alpha = 1 - 0.9 * (cur_epoch - cur_epoch % args.k) / args.num_epochs
-                loss2 = F.kl_div(F.log_softmax(output / T, dim=1), F.softmax(final_teacher / T, dim=1),
-                                 reduction='batchmean')
-                total_loss = loss1 + loss2 * T ** 2
+                loss2 = F.kl_div(F.log_softmax(output / T, dim=1), final_teacher, reduction='batchmean') * T ** 2
+                total_loss = loss1 + loss2
             else:
                 loss2 = torch.tensor(0)
                 total_loss = loss1
@@ -221,7 +221,6 @@ if __name__ == '__main__':
         writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
         writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
 
-        # TODO:怀疑是deepcopy有问题，待求证！
         if (i + 1) % args.k == 0:
             teacher_new = copy.deepcopy(model)
             teachers.append(teacher_new)
@@ -235,12 +234,12 @@ if __name__ == '__main__':
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
         last_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'save_snapshot', 'last.pth')
-        torch.save(save_dic, last_path)
+        # torch.save(save_dic, last_path)
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
             best_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'save_snapshot', 'best.pth')
-            torch.save(save_dic, best_path)
+            # torch.save(save_dic, best_path)
         scheduler.step()
 
     writer.close()

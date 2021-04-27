@@ -53,9 +53,9 @@ nohup python train_SD_attention.py --atten 5 --gpu 0 --arch wide_resnet20_8 --st
 nohup python train_SD_attention.py --atten 5 --gpu 1 --arch wide_resnet20_8 --step 5 --warm_up 100 > SD_step5_atten5_wide_resnet20_8.out 2>&1 &
 
 #8.New Method
-nohup python train_New.py --gpu 5 --arch vgg19 --outdir save_New_KD_V3 --atten 1 > New_vgg19.out 2>&1 &
-nohup python train_New.py --gpu 3 --arch resnet32 --outdir save_New_KD_V3 --atten 1 > New_resnet32.out 2>&1 &
-nohup python train_New.py --gpu 4 --arch wide_resnet20_8 --outdir save_New_KD_V3 --atten 1 > New_wide_resnet20_8.out 2>&1 &
+nohup python train_New.py --gpu 3 --arch vgg19 --outdir save_New_V2 --atten 1 > New_vgg19.out 2>&1 &
+nohup python train_New.py --gpu 4 --arch resnet32 --outdir save_New_V2 --atten 1 > New_resnet32.out 2>&1 &
+nohup python train_New.py --gpu 5 --arch wide_resnet20_8 --outdir save_New_V2 --atten 1 > New_wide_resnet20_8.out 2>&1 &
 
 nohup python train_New.py --gpu 5 --arch vgg19 --outdir save_New_2 > New_vgg19.out 2>&1 &
 nohup python train_New.py --gpu 5 --arch resnet32 --outdir save_New_2 > New_resnet32.out 2>&1 &
@@ -108,6 +108,9 @@ nohup python change_LWR.py --gpu 0 --model resnet32 > change_LWR_resnet32.out 2>
 # save_New_V2代表权重为1 save_New_V1权重衰减
 # TODO:打印LWR的kd_Loss和label_loss
 
-nohup python train_New_Test.py --gpu 0 --arch vgg19 --outdir save_New_Test --sd_KD --atten 1 > New_vgg19_Test.out 2>&1 &
-nohup python train_New_Test.py --gpu 1 --arch resnet32 --outdir save_New_Test --sd_KD --atten 1 > New_resnet32_Test.out 2>&1 &
-nohup python train_New_Test.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_Test --sd_KD --atten 1 > New_wide_resnet20_8_Test.out 2>&1 &
+nohup python train_New_Test.py --gpu 3 --arch vgg19 --outdir save_New_Test --sd_KD --atten 1 > New_vgg19_Test.out 2>&1 &
+nohup python train_New_Test.py --gpu 4 --arch resnet32 --outdir save_New_Test --sd_KD --atten 1 > New_resnet32_Test.out 2>&1 &
+nohup python train_New_Test.py --gpu 5 --arch wide_resnet20_8 --outdir save_New_Test --sd_KD --atten 1 > New_wide_resnet20_8_Test.out 2>&1 &
+
+
+#TODO：显存膨胀问题！ deepcopy
