@@ -40,6 +40,7 @@ parser.add_argument('--T', type=float, default=3,
                     help='distillation temperature (default: 3)')
 parser.add_argument('--k', type=float, default=5)
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
+parser.add_argument('--factor', type=int, default=8)
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True
@@ -49,26 +50,7 @@ if torch.cuda.is_available():
 else:
     device = "cpu"
 
-
-class DataAug(nn.Module):
-    def __init__(self, data_name):
-        super().__init__()
-        if data_name == "CIFAR10":
-            normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
-        elif data_name == "CIFAR100":
-            normalize = transforms.Normalize((0.5071, 0.4865, 0.4409), (0.2673, 0.2564, 0.2762))
-        elif data_name == "imagenet":
-            normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-        self.layer = nn.Sequential(transforms.RandomCrop(32, padding=4),
-                                   transforms.RandomHorizontalFlip(),
-                                   normalize)
-
-    def forward(self, x):
-        x = self.layer(x)
-        return x
-
-
-def train(train_loader, model, optimizer, criterion, teachers, T, aug):
+def train(train_loader, model, optimizer, criterion, teachers, T):
     model.train()
 
     loss_total = utils.AverageMeter()
@@ -79,32 +61,35 @@ def train(train_loader, model, optimizer, criterion, teachers, T, aug):
     end = time.time()
 
     with tqdm(total=len(train_loader)) as t:
-        for _, (train_batch, labels_batch) in enumerate(train_loader):
-            train_batch = train_batch.to(device)
+        for _, (img_stu, img_teacher, labels_batch) in enumerate(train_loader):
+            img_stu = img_stu.to(device)
             labels_batch = labels_batch.to(device)
 
-            train_batch_stu = aug(train_batch)
-            student_query, output = model(train_batch_stu)
-            student_query = student_query[:, None, :]  # Bx1x64
+            student_query, output = model(img_stu)
+            dim_reduce = nn.Linear(student_query.size(1), student_query.size(1) // args.factor, bias=False).to(device)
+            student_query = dim_reduce(student_query)
+            student_query = student_query[:, None, :]  # Bx1x8
             loss1 = criterion(output, labels_batch)
 
             train_batch_tea = []
             for i in range(len(teachers)):
-                train_batch_tea.append(aug(train_batch))
+                train_batch_tea.append(img_teacher[i].to(device))
 
             if len(teachers) != 0:
                 for teacher in teachers:
                     teacher.eval()
                 teacher_keys, teacher_outputs = teachers[0](train_batch_tea[0])
+                teacher_keys = dim_reduce(teacher_keys)
                 teacher_keys = teacher_keys[:, :, None]
                 teacher_outputs = teacher_outputs[:, None, :]
                 for i in range(1, len(teachers)):
                     teacher = teachers[i]
                     train_batch = train_batch_tea[i]
                     temp1, temp2 = teacher(train_batch)
+                    temp1 = dim_reduce(temp1)
                     temp1 = temp1[:, :, None]
                     temp2 = temp2[:, None, :]
-                    teacher_keys = torch.cat((teacher_keys, temp1), 2)  # B x 64 x atten
+                    teacher_keys = torch.cat((teacher_keys, temp1), 2)  # B x 8 x atten
                     teacher_outputs = torch.cat((teacher_outputs, temp2), 1)  # B x atten x 100
                 teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
                 energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
@@ -229,13 +214,12 @@ if __name__ == '__main__':
     best_acc = 0
     writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch, 'atten' + str(args.atten)))
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.schedule, gamma=0.1)
-    aug = DataAug(data_name=args.dataset)
 
     for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
-        train_metrics = train(train_loader, model, optimizer, criterion, teachers, args.T, aug)
+        train_metrics = train(train_loader, model, optimizer, criterion, teachers, args.T)
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
         writer.add_scalar('Train/kd_loss', train_metrics['loss_kd'], i + 1)

@@ -56,18 +56,12 @@ def dataloader(data_name="CIFAR100", batch_size=128, num_workers=8, root='./Data
 
     # Choose corresponding dataset
     if data_name == 'CIFAR10':
-        trainset = torchvision.datasets.CIFAR10(root=root, train=True,
-                                                download=True, transform=train_transformer)
-
-        testset = torchvision.datasets.CIFAR10(root=root, train=False,
-                                               download=True, transform=test_transformer)
+        trainset = torchvision.datasets.CIFAR10(root=root, train=True, download=True, transform=train_transformer)
+        testset = torchvision.datasets.CIFAR10(root=root, train=False, download=True, transform=test_transformer)
 
     elif data_name == 'CIFAR100':
-        trainset = torchvision.datasets.CIFAR100(root=root, train=True,
-                                                 download=True, transform=train_transformer)
-
-        testset = torchvision.datasets.CIFAR100(root=root, train=False,
-                                                download=True, transform=test_transformer)
+        trainset = torchvision.datasets.CIFAR100(root=root, train=True, download=True, transform=train_transformer)
+        testset = torchvision.datasets.CIFAR100(root=root, train=False, download=True, transform=test_transformer)
 
     elif data_name == 'imagenet':
         traindir = os.path.join(root, 'train')

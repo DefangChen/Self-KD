@@ -53,9 +53,9 @@ nohup python train_SD_attention.py --atten 5 --gpu 0 --arch wide_resnet20_8 --st
 nohup python train_SD_attention.py --atten 5 --gpu 1 --arch wide_resnet20_8 --step 5 --warm_up 100 > SD_step5_atten5_wide_resnet20_8.out 2>&1 &
 
 #8.New Method
-nohup python train_New.py --gpu 3 --arch vgg19 --outdir save_New_2 --atten 1 > New_vgg19.out 2>&1 &
-nohup python train_New.py --gpu 4 --arch resnet32 --outdir save_New_2 --atten 1 > New_resnet32.out 2>&1 &
-nohup python train_New.py --gpu 5 --arch wide_resnet20_8 --outdir save_New_2 --atten 1 > New_wide_resnet20_8.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V3 --factor 8 --atten 3 > New_V3_vgg19_atten3.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V3 --factor 8 --atten 3 > New_V3_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 2,3 --arch wide_resnet20_8 --outdir save_New_V3 --factor 8 --atten 3 > New_V3_wide_resnet20_8_atten3.out 2>&1 &
 
 nohup python train_New.py --gpu 5 --arch vgg19 --outdir save_New_2 > New_vgg19.out 2>&1 &
 nohup python train_New.py --gpu 5 --arch resnet32 --outdir save_New_2 > New_resnet32.out 2>&1 &
@@ -71,9 +71,9 @@ nohup python train_New2.py --gpu 2 --arch resnet32 --outdir save_New2_KD --sd_KD
 nohup python train_New2.py --gpu 1 --arch wide_resnet20_8 > New2_wide_resnet20_8.out 2>&1 &
 
 #9.change_LWR  用来检测是不是因为每个minibatch更新软标签导致效果的提升（修改为每个epoch更新标签）
-nohup python change_LWR.py --gpu 6 --model resnet32 --outdir save_fun > change_LWR_resnet32.out 2>&1 &
-nohup python change_LWR.py --gpu 1 --model vgg19 --outdir save_change_LWR_test > change_LWR_vgg19.out 2>&1 &
-nohup python change_LWR.py --gpu 4 --model wide_resnet20_8 --outdir save_change_LWR_test > change_LWR_wide_resnet20_8.out 2>&1 &
+nohup python change_LWR.py --gpu 2 --model resnet32 --outdir save_change_LWR > change_LWR_resnet32.out 2>&1 &
+nohup python change_LWR.py --gpu 3 --model vgg19 --outdir save_change_LWR > change_LWR_vgg19.out 2>&1 &
+nohup python change_LWR.py --gpu 5 --model wide_resnet20_8 --outdir save_change_LWR > change_LWR_wide_resnet20_8.out 2>&1 &
 
 #9.5.change_LWR2 用来检测是不是因为每个k周期将kdloss归零导致效果的提升（除掉归0的那个epoch） 正常
 nohup python change_LWR2.py --gpu 3 --model resnet32 > change_LWR2_resnet32.out 2>&1 &
