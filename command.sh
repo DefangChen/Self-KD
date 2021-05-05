@@ -53,17 +53,17 @@ nohup python train_SD_attention.py --atten 5 --gpu 0 --arch wide_resnet20_8 --st
 nohup python train_SD_attention.py --atten 5 --gpu 1 --arch wide_resnet20_8 --step 5 --warm_up 100 > SD_step5_atten5_wide_resnet20_8.out 2>&1 &
 
 #8.New Method
-nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V4_atten1 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
-nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V4_atten1 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New.py --gpu 2,3 --arch wide_resnet20_8 --outdir save_New_V4_atten1 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V5_atten1 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V5_atten1 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 2,3 --arch wide_resnet20_8 --outdir save_New_V5_atten1 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
 
-nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V4_atten1 --factor 8 --atten 1 > New_vgg19_atten3.out 2>&1 &
-nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V4_atten1 --factor 8 --atten 1 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New.py --gpu 4,5 --arch wide_resnet20_8 --outdir save_New_V4_atten1 --factor 8 --atten 1 > New_wide_resnet20_8_atten3.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V5_atten1 --factor 8 --atten 1 > New_vgg19_atten3.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V5_atten1 --factor 8 --atten 1 > New_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 6,7 --arch wide_resnet20_8 --outdir save_New_V5_atten1 --factor 8 --atten 1 > New_wide_resnet20_8_atten3.out 2>&1 &
 
-nohup python train_New.py --gpu 4 --tea_avg --arch vgg19 --outdir save_New_V4_avg1 --atten 3 > New_vgg19_avg.out 2>&1 &
-nohup python train_New.py --gpu 5 --tea_avg --arch resnet32 --outdir save_New_V4_avg1 --atten 3 > New_resnet32_avg.out 2>&1 &
-nohup python train_New.py --gpu 6,7 --tea_avg --arch wide_resnet20_8 --outdir save_New_V4_avg1 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
+nohup python train_New.py --gpu 4 --tea_avg --arch vgg19 --outdir save_New_V5_avg1 --atten 3 > New_vgg19_avg.out 2>&1 &
+nohup python train_New.py --gpu 5 --tea_avg --arch resnet32 --outdir save_New_V5_avg1 --atten 3 > New_resnet32_avg.out 2>&1 &
+nohup python train_New.py --gpu 4,5 --tea_avg --arch wide_resnet20_8 --outdir save_New_V5_avg1 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
 
 #9.New Method2
 nohup python train_New2.py --gpu 0 --arch vgg19 > New2_vgg19.out 2>&1 &

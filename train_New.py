@@ -1,6 +1,7 @@
 import argparse
 import copy
 import logging
+import math
 import os
 import time
 
@@ -98,7 +99,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
                     final_teacher = final_teacher.detach()
                 else:
                     energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
-                    attention = F.softmax(energy, dim=-1)  # B x 1 x atten 权重归一化
+                    attention = F.softmax(energy/math.sqrt(student_query.size(2)), dim=-1)  # B x 1 x atten 权重归一化
                     final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
                     final_teacher = final_teacher.squeeze(1)  # Bx100
                     final_teacher = final_teacher.detach()
@@ -184,15 +185,46 @@ def evaluate_teachers(test_loader, student, teachers, criterion):
                         _, temp2 = teacher(test_batch)
                         temp2 = temp2[:, None, :]
                         teacher_outputs = torch.cat((teacher_outputs, temp2), 1)  # B x atten x 100
-                teacher_outputs = F.softmax(teacher_outputs, dim=2)
-                teacher_outputs = teacher_outputs.mean(dim=1)
-            metrics = utils.accuracy(teacher_outputs, labels_batch, topk=(1, 5))
-            loss = criterion(teacher_outputs, labels_batch)
-            accTop1_avg.update(metrics[0].item())
-            accTop5_avg.update(metrics[1].item())
-            loss_avg.update(loss.item())
+                    teacher_outputs = F.softmax(teacher_outputs, dim=2)
+                    teacher_outputs = teacher_outputs.mean(dim=1)
+                    metrics = utils.accuracy(teacher_outputs, labels_batch, topk=(1, 5))
+                    loss = criterion(teacher_outputs, labels_batch)
+                    accTop1_avg.update(metrics[0].item())
+                    accTop5_avg.update(metrics[1].item())
+                    loss_avg.update(loss.item())
         else:
-            pass
+            with torch.no_grad():
+                for test_batch, labels_batch in test_loader:
+                    test_batch = test_batch.to(device)
+                    labels_batch = labels_batch.to(device)
+
+                    student_query, output = student(test_batch)
+                    dim_reduce = nn.Linear(student_query.size(1), student_query.size(1) // args.factor, bias=False).to(
+                        device)
+                    student_query = dim_reduce(student_query)
+                    student_query = student_query[:, None, :]  # Bx1x8
+
+                    teacher_keys, teacher_outputs = teachers[0](test_batch)
+                    teacher_keys = dim_reduce(teacher_keys)
+                    teacher_keys = teacher_keys[:, :, None]
+                    teacher_outputs = teacher_outputs[:, None, :]
+                    for teacher in teachers[1:]:
+                        temp1, temp2 = teacher(test_batch)
+                        temp1 = dim_reduce(temp1)
+                        temp1 = temp1[:, :, None]
+                        temp2 = temp2[:, None, :]
+                        teacher_keys = torch.cat((teacher_keys, temp1), 2)  # B x 8 x atten
+                        teacher_outputs = torch.cat((teacher_outputs, temp2), 1)  # B x atten x 100
+                    teacher_outputs = F.softmax(teacher_outputs, dim=2)
+                    energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
+                    attention = F.softmax(energy/math.sqrt(student_query.size(2)), dim=-1)  # B x 1 x atten 权重归一化
+                    final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
+                    final_teacher = final_teacher.squeeze(1)  # Bx100
+                    metrics = utils.accuracy(final_teacher, labels_batch, topk=(1, 5))
+                    loss = criterion(final_teacher, labels_batch)
+                    accTop1_avg.update(metrics[0].item())
+                    accTop5_avg.update(metrics[1].item())
+                    loss_avg.update(loss.item())
 
     teachers_test_metrics = {'teachers_test_loss': loss_avg.value(),
                              'teachers_test_accTop1': accTop1_avg.value(),
@@ -271,6 +303,11 @@ if __name__ == '__main__':
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
         writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
         writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
+
+        teachers_metrics = evaluate_teachers(test_loader, model, teachers, criterion)
+        writer.add_scalar('Test/Teacher_Loss', teachers_metrics['teachers_test_loss'], i + 1)
+        writer.add_scalar('Test/Teacher_AccTop1', teachers_metrics['teachers_test_accTop1'], i + 1)
+        writer.add_scalar('Test/teacher_AccTop5', teachers_metrics['teachers_test_accTop5'], i + 1)
 
         if (i + 1) % args.k == 0:
             teacher_new = copy.deepcopy(model)
