@@ -15,12 +15,11 @@ import utils
 from dataset import dataloader_New
 
 from tensorboardX import SummaryWriter
-import torchvision.transforms as transforms
 
 parser = argparse.ArgumentParser(description='A New Method')
 parser.add_argument('--gpu', default='0', type=str)
 parser.add_argument('--atten', default=3, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_New', type=str)
+parser.add_argument('--outdir', default='save_New_V4', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
@@ -41,6 +40,7 @@ parser.add_argument('--T', type=float, default=3,
 parser.add_argument('--k', type=float, default=5)
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 parser.add_argument('--factor', type=int, default=8)
+parser.add_argument('--tea_avg', action='store_true')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True
@@ -49,6 +49,7 @@ if torch.cuda.is_available():
     device = torch.device("cuda")
 else:
     device = "cpu"
+
 
 def train(train_loader, model, optimizer, criterion, teachers, T):
     model.train()
@@ -94,9 +95,13 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
                 teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
                 energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
                 attention = F.softmax(energy, dim=-1)  # B x 1 x atten 权重归一化
-                final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
-                final_teacher = final_teacher.squeeze(1)  # Bx100
-                final_teacher = final_teacher.detach()
+                if args.tea_avg:
+                    final_teacher = teacher_outputs.mean(dim=1)
+                    final_teacher = final_teacher.detach()
+                else:
+                    final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
+                    final_teacher = final_teacher.squeeze(1)  # Bx100
+                    final_teacher = final_teacher.detach()
 
                 loss2 = F.kl_div(F.log_softmax(output / T, dim=1), final_teacher, reduction='batchmean') * T ** 2
                 total_loss = loss1 + loss2
