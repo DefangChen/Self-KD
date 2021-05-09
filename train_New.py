@@ -64,6 +64,8 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
 
     with tqdm(total=len(train_loader)) as t:
         for _, (img_stu, img_teacher, labels_batch) in enumerate(train_loader):
+            # img_stu = img[0]
+            # img_teacher = img[1]
             img_stu = img_stu.to(device)
             labels_batch = labels_batch.to(device)
 
@@ -99,7 +101,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
                     final_teacher = final_teacher.detach()
                 else:
                     energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
-                    attention = F.softmax(energy/math.sqrt(student_query.size(2)), dim=-1)  # B x 1 x atten 权重归一化
+                    attention = F.softmax(energy / math.sqrt(student_query.size(2)), dim=-1)  # B x 1 x atten 权重归一化
                     final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
                     final_teacher = final_teacher.squeeze(1)  # Bx100
                     final_teacher = final_teacher.detach()
@@ -217,7 +219,7 @@ def evaluate_teachers(test_loader, student, teachers, criterion):
                         teacher_outputs = torch.cat((teacher_outputs, temp2), 1)  # B x atten x 100
                     teacher_outputs = F.softmax(teacher_outputs, dim=2)
                     energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
-                    attention = F.softmax(energy/math.sqrt(student_query.size(2)), dim=-1)  # B x 1 x atten 权重归一化
+                    attention = F.softmax(energy / math.sqrt(student_query.size(2)), dim=-1)  # B x 1 x atten 权重归一化
                     final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
                     final_teacher = final_teacher.squeeze(1)  # Bx100
                     metrics = utils.accuracy(final_teacher, labels_batch, topk=(1, 5))

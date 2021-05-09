@@ -4,6 +4,18 @@ import torchvision
 import torchvision.transforms as transforms
 
 
+# class TransformTwice:
+#     def __init__(self, transform, num):
+#         self.transform = transform
+#         self.num = num
+#
+#     def __call__(self, inp):
+#         img = []
+#         for i in range(self.num):
+#             img.append(self.transform(inp))
+#         return img[0], img[1:]
+
+
 class DatasetWrapper(torch.utils.data.Dataset):
     def __init__(self, ds, num):
         self.ds = ds
@@ -34,11 +46,14 @@ def dataloader(data_name="CIFAR100", batch_size=64, num_workers=8, root='./Data'
 
     if data_name == "CIFAR10" or data_name == "CIFAR100":
         # Transformer for train set: random crops and horizontal flip
-        train_transformer = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),  # randomly flip image horizontally
-            transforms.ToTensor(),
-            normalize])
+        train_transformer = transforms.Compose([transforms.Pad(2, padding_mode='reflect'),
+                                                transforms.ColorJitter(brightness=0.4, contrast=0.4,
+                                                                       saturation=0.4, hue=0.1),
+                                                transforms.RandomCrop(32),
+                                                transforms.RandomHorizontalFlip(),
+                                                transforms.ToTensor(),
+                                                normalize])
+        # train_transformer = TransformTwice(train_transformer, num + 1)
         # Transformer for test set
         test_transformer = transforms.Compose([
             transforms.ToTensor(),
