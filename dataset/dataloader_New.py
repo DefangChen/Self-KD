@@ -2,7 +2,7 @@ import os
 import torch
 import torchvision
 import torchvision.transforms as transforms
-import randAug
+from dataset import randAug
 
 
 # class TransformTwice:
