@@ -2,6 +2,7 @@ import os
 import torch
 import torchvision
 import torchvision.transforms as transforms
+import randAug
 
 
 # class TransformTwice:
@@ -14,6 +15,16 @@ import torchvision.transforms as transforms
 #         for i in range(self.num):
 #             img.append(self.transform(inp))
 #         return img[0], img[1:]
+
+# class TransformWeakStrong:
+#     def __init__(self, trans1, trans2):
+#         self.transform1 = trans1
+#         self.transform2 = trans2
+#
+#     def __call__(self, inp):
+#         out1 = self.transform1(inp)
+#         out2 = self.transform2(inp)
+#         return out1, out2
 
 
 class DatasetWrapper(torch.utils.data.Dataset):
@@ -46,18 +57,17 @@ def dataloader(data_name="CIFAR100", batch_size=64, num_workers=8, root='./Data'
 
     if data_name == "CIFAR10" or data_name == "CIFAR100":
         # Transformer for train set: random crops and horizontal flip
-        train_transformer = transforms.Compose([transforms.Pad(2, padding_mode='reflect'),
-                                                transforms.ColorJitter(brightness=0.4, contrast=0.4,
-                                                                       saturation=0.4, hue=0.1),
+        train_transformer = transforms.Compose([transforms.RandomHorizontalFlip(),
+                                                transforms.Pad(2, padding_mode='reflect'),
                                                 transforms.RandomCrop(32),
-                                                transforms.RandomHorizontalFlip(),
+                                                randAug.RandAugmentMC(n=2, m=10),
                                                 transforms.ToTensor(),
-                                                normalize])
+                                                normalize
+                                                ])
         # train_transformer = TransformTwice(train_transformer, num + 1)
         # Transformer for test set
-        test_transformer = transforms.Compose([
-            transforms.ToTensor(),
-            normalize])
+        test_transformer = transforms.Compose([transforms.ToTensor(),
+                                               normalize])
 
     elif data_name == 'imagenet':
         # Transformer for train set: random crops and horizontal flip
