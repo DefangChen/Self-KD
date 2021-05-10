@@ -16,32 +16,35 @@ from dataset import randAug
 #             img.append(self.transform(inp))
 #         return img[0], img[1:]
 
-# class TransformWeakStrong:
-#     def __init__(self, trans1, trans2):
-#         self.transform1 = trans1
-#         self.transform2 = trans2
+class TransformWeakStrong:
+    def __init__(self, trans1, trans2, teacher_num):
+        self.transform1 = trans1
+        self.transform2 = trans2
+        self.teacher_num = teacher_num
+
+    def __call__(self, inp):
+        out_stu = self.transform1(inp)
+        out_tea = []
+        for i in range(self.teacher_num):
+            out_tea.append(self.transform2(inp))
+        return out_stu, out_tea
+
+
+# class DatasetWrapper(torch.utils.data.Dataset):
+#     def __init__(self, ds, num):
+#         self.ds = ds
+#         self.num = num
 #
-#     def __call__(self, inp):
-#         out1 = self.transform1(inp)
-#         out2 = self.transform2(inp)
-#         return out1, out2
-
-
-class DatasetWrapper(torch.utils.data.Dataset):
-    def __init__(self, ds, num):
-        self.ds = ds
-        self.num = num
-
-    def __len__(self):
-        return len(self.ds)
-
-    def __getitem__(self, idx):  # idx代表的是图片的编号
-        img, label = self.ds[idx]
-        img_teacher = []
-        for i in range(self.num):
-            temp, _ = self.ds[idx]
-            img_teacher.append(temp)
-        return img, img_teacher, label
+#     def __len__(self):
+#         return len(self.ds)
+#
+#     def __getitem__(self, idx):  # idx代表的是图片的编号
+#         img, label = self.ds[idx]
+#         img_teacher = []
+#         for i in range(self.num):
+#             temp, _ = self.ds[idx]
+#             img_teacher.append(temp)
+#         return img, img_teacher, label
 
 
 def dataloader(data_name="CIFAR100", batch_size=64, num_workers=8, root='./Data', num=3):
@@ -56,18 +59,20 @@ def dataloader(data_name="CIFAR100", batch_size=64, num_workers=8, root='./Data'
         normalize = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
     if data_name == "CIFAR10" or data_name == "CIFAR100":
-        # Transformer for train set: random crops and horizontal flip
-        train_transformer = transforms.Compose([transforms.RandomHorizontalFlip(),
-                                                transforms.Pad(2, padding_mode='reflect'),
-                                                transforms.RandomCrop(32),
-                                                randAug.RandAugmentMC(n=2, m=10),
-                                                transforms.ToTensor(),
-                                                normalize
-                                                ])
-        # train_transformer = TransformTwice(train_transformer, num + 1)
-        # Transformer for test set
-        test_transformer = transforms.Compose([transforms.ToTensor(),
+        transformer_weak = transforms.Compose([transforms.RandomCrop(32, padding=4),
+                                               transforms.RandomHorizontalFlip(),
+                                               transforms.ToTensor(),
                                                normalize])
+
+        transformer_strong = transforms.Compose([transforms.RandomHorizontalFlip(),
+                                                 transforms.Pad(2, padding_mode='reflect'),
+                                                 transforms.RandomCrop(32),
+                                                 randAug.RandAugmentMC(n=2, m=10),
+                                                 transforms.ToTensor(),
+                                                 normalize
+                                                 ])
+        train_transformer = TransformWeakStrong(transformer_weak, transformer_strong, num)
+        test_transformer = transforms.Compose([transforms.ToTensor(), normalize])
 
     elif data_name == 'imagenet':
         # Transformer for train set: random crops and horizontal flip
@@ -101,7 +106,6 @@ def dataloader(data_name="CIFAR100", batch_size=64, num_workers=8, root='./Data'
         trainset = torchvision.datasets.ImageFolder(traindir, train_transformer)
         testset = torchvision.datasets.ImageFolder(valdir, test_transformer)
 
-    trainset = DatasetWrapper(trainset, num)
     trainloader = torch.utils.data.DataLoader(trainset, shuffle=True, **kwargs)
     testloader = torch.utils.data.DataLoader(testset, shuffle=False, **kwargs)
     return trainloader, testloader

@@ -63,9 +63,8 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
     end = time.time()
 
     with tqdm(total=len(train_loader)) as t:
-        for _, (img_stu, img_teacher, labels_batch) in enumerate(train_loader):
-            # img_stu = img[0]
-            # img_teacher = img[1]
+        for _, (img, labels_batch) in enumerate(train_loader):
+            img_stu, img_teacher = img[0], img[1]
             img_stu = img_stu.to(device)
             labels_batch = labels_batch.to(device)
 
