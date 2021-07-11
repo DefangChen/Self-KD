@@ -20,7 +20,7 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser(description='A New Method')
 parser.add_argument('--gpu', default='0', type=str)
 parser.add_argument('--atten', default=3, type=int)  # attention的数量
-parser.add_argument('--outdir', default='save_New_V4', type=str)
+parser.add_argument('--outdir', default='save_New_V1', type=str)
 parser.add_argument('--arch', type=str, default='resnet32', help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
 parser.add_argument('--workers', default=8, type=int, metavar='N',
@@ -52,7 +52,17 @@ else:
     device = "cpu"
 
 
-def train(train_loader, model, optimizer, criterion, teachers, T):
+class Linear_Model(nn.Module):
+    def __init__(self, dimension_num):
+        super(Linear_Model, self).__init__()
+        self.fc = nn.Linear(dimension_num, dimension_num // args.factor)
+
+    def forward(self, x):
+        x = self.fc(x)
+        return x
+
+
+def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, key_weight):
     model.train()
 
     loss_total = utils.AverageMeter()
@@ -69,9 +79,10 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
             labels_batch = labels_batch.to(device)
 
             student_query, output = model(img_stu)
-            dim_reduce = nn.Linear(student_query.size(1), student_query.size(1) // args.factor, bias=False).to(device)
-            student_query = dim_reduce(student_query)
+            student_query = student_query.detach()
+            student_query = query_weight(student_query)  # Bx8
             student_query = student_query[:, None, :]  # Bx1x8
+
             loss1 = criterion(output, labels_batch)
 
             train_batch_tea = []
@@ -82,14 +93,18 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
                 for teacher in teachers:
                     teacher.eval()
                 teacher_keys, teacher_outputs = teachers[0](train_batch_tea[0])
-                teacher_keys = dim_reduce(teacher_keys)
-                teacher_keys = teacher_keys[:, :, None]
-                teacher_outputs = teacher_outputs[:, None, :]
+                teacher_keys = teacher_keys.detach()
+                teacher_outputs = teacher_outputs.detach()
+                teacher_keys = key_weight(teacher_keys)  # Bx8
+                teacher_keys = teacher_keys[:, :, None]  # Bx8x1
+                teacher_outputs = teacher_outputs[:, None, :]  # Bx1x100
                 for i in range(1, len(teachers)):
                     teacher = teachers[i]
                     train_batch = train_batch_tea[i]
                     temp1, temp2 = teacher(train_batch)
-                    temp1 = dim_reduce(temp1)
+                    temp1 = temp1.detach()
+                    temp2 = temp2.detach()
+                    temp1 = key_weight(temp1)
                     temp1 = temp1[:, :, None]
                     temp2 = temp2[:, None, :]
                     teacher_keys = torch.cat((teacher_keys, temp1), 2)  # B x 8 x atten
@@ -97,13 +112,13 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
                 teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
                 if args.tea_avg:
                     final_teacher = teacher_outputs.mean(dim=1)
-                    final_teacher = final_teacher.detach()
+                    # final_teacher = final_teacher.detach()
                 else:
-                    energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
-                    attention = F.softmax(energy / math.sqrt(student_query.size(2)), dim=-1)  # B x 1 x atten 权重归一化
+                    energy = torch.bmm(student_query, teacher_keys)  # / math.sqrt(student_query.size(2))
+                    attention = F.softmax(energy, dim=-1)  # B x 1 x atten 权重归一化
                     final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
                     final_teacher = final_teacher.squeeze(1)  # Bx100
-                    final_teacher = final_teacher.detach()
+                    # final_teacher = final_teacher.detach()
 
                 loss2 = F.kl_div(F.log_softmax(output / T, dim=1), final_teacher, reduction='batchmean') * T ** 2
                 total_loss = loss1 + loss2
@@ -115,7 +130,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T):
             total_loss.backward()
             optimizer.step()
 
-            metrics = utils.accuracy(output, labels_batch, topk=(1, 5))  # metircs代表指标
+            metrics = utils.accuracy(output, labels_batch, topk=(1, 5))
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
             loss_total.update(total_loss.item())
@@ -166,84 +181,18 @@ def evaluate(test_loader, model, criterion):
     return test_metrics
 
 
-def evaluate_teachers(test_loader, student, teachers, criterion):
-    loss_avg = utils.AverageMeter()
-    accTop1_avg = utils.AverageMeter()
-    accTop5_avg = utils.AverageMeter()
-    end = time.time()
-
-    if len(teachers) != 0:
-        for teacher in teachers:
-            teacher.eval()
-        if args.tea_avg:
-            with torch.no_grad():
-                for test_batch, labels_batch in test_loader:
-                    test_batch = test_batch.to(device)
-                    labels_batch = labels_batch.to(device)
-                    _, teacher_outputs = teachers[0](test_batch)
-                    teacher_outputs = teacher_outputs[:, None, :]
-                    for teacher in teachers[1:]:
-                        _, temp2 = teacher(test_batch)
-                        temp2 = temp2[:, None, :]
-                        teacher_outputs = torch.cat((teacher_outputs, temp2), 1)  # B x atten x 100
-                    teacher_outputs = F.softmax(teacher_outputs, dim=2)
-                    teacher_outputs = teacher_outputs.mean(dim=1)
-                    metrics = utils.accuracy(teacher_outputs, labels_batch, topk=(1, 5))
-                    loss = criterion(teacher_outputs, labels_batch)
-                    accTop1_avg.update(metrics[0].item())
-                    accTop5_avg.update(metrics[1].item())
-                    loss_avg.update(loss.item())
-        else:
-            with torch.no_grad():
-                for test_batch, labels_batch in test_loader:
-                    test_batch = test_batch.to(device)
-                    labels_batch = labels_batch.to(device)
-
-                    student_query, output = student(test_batch)
-                    dim_reduce = nn.Linear(student_query.size(1), student_query.size(1) // args.factor, bias=False).to(
-                        device)
-                    student_query = dim_reduce(student_query)
-                    student_query = student_query[:, None, :]  # Bx1x8
-
-                    teacher_keys, teacher_outputs = teachers[0](test_batch)
-                    teacher_keys = dim_reduce(teacher_keys)
-                    teacher_keys = teacher_keys[:, :, None]
-                    teacher_outputs = teacher_outputs[:, None, :]
-                    for teacher in teachers[1:]:
-                        temp1, temp2 = teacher(test_batch)
-                        temp1 = dim_reduce(temp1)
-                        temp1 = temp1[:, :, None]
-                        temp2 = temp2[:, None, :]
-                        teacher_keys = torch.cat((teacher_keys, temp1), 2)  # B x 8 x atten
-                        teacher_outputs = torch.cat((teacher_outputs, temp2), 1)  # B x atten x 100
-                    teacher_outputs = F.softmax(teacher_outputs, dim=2)
-                    energy = torch.bmm(student_query, teacher_keys)  # bmm是批处理当中的矩阵乘法
-                    attention = F.softmax(energy / math.sqrt(student_query.size(2)), dim=-1)  # B x 1 x atten 权重归一化
-                    final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
-                    final_teacher = final_teacher.squeeze(1)  # Bx100
-                    metrics = utils.accuracy(final_teacher, labels_batch, topk=(1, 5))
-                    loss = criterion(final_teacher, labels_batch)
-                    accTop1_avg.update(metrics[0].item())
-                    accTop5_avg.update(metrics[1].item())
-                    loss_avg.update(loss.item())
-
-    teachers_test_metrics = {'teachers_test_loss': loss_avg.value(),
-                             'teachers_test_accTop1': accTop1_avg.value(),
-                             'teachers_test_accTop5': accTop5_avg.value(),
-                             'time': time.time() - end}
-    return teachers_test_metrics
-
-
 if __name__ == '__main__':
     begin_time = time.time()
 
-    utils.solve_dir(args.outdir)
-    utils.solve_dir(os.path.join(args.outdir, args.arch))
-    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'save_snapshot'))
-    utils.solve_dir(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'log'))
+    if args.tea_avg:
+        ss = "avg"
+    else:
+        ss = "atten"
+    utils.solve_dir(os.path.join(args.outdir, args.arch, ss + str(args.atten), 'save_snapshot'))
+    utils.solve_dir(os.path.join(args.outdir, args.arch, ss + str(args.atten), 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'log', now_time + 'train.log'))
+    utils.set_logger(os.path.join(args.outdir, args.arch, ss + str(args.atten), 'log', now_time + 'train.log'))
 
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
@@ -278,23 +227,48 @@ if __name__ == '__main__':
     else:
         model = model.to(device)
 
+    dataiter = iter(train_loader)
+    img_temp = next(dataiter)[0][0]
+    img_temp = img_temp.to(device)
+    # print(img_temp.shape)  # torch.Size([128, 3, 32, 32])
+    xf, _ = model(img_temp)
+    dimension_num = xf.size(1)
+    query_weight = Linear_Model(dimension_num)
+    key_weight = Linear_Model(dimension_num)
+    if torch.cuda.device_count() > 1:
+        query_weight = nn.DataParallel(query_weight).to(device)
+        key_weight = nn.DataParallel(key_weight).to(device)
+    else:
+        query_weight = query_weight.to(device)
+        key_weight = key_weight.to(device)
+
     num_params = (sum(p.numel() for p in model.parameters()) / 1000000.0)
     logging.info('Total params: %.2fM' % num_params)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=args.init_lr, momentum=args.momentum, nesterov=True,
-                          weight_decay=args.wd)
+    optimizer = optim.SGD([{'params': model.parameters()},
+                           {'params': query_weight.parameters()},
+                           {'params': key_weight.parameters()}],
+                          lr=args.init_lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
 
     teachers = []
     best_acc = 0
-    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch, 'atten' + str(args.atten)))
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch, ss + str(args.atten)))
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.schedule, gamma=0.1)
 
     for i in range(args.num_epochs):
+        print("teachers_num:", len(teachers))
+        print("query weight:")
+        for parameters in query_weight.parameters():
+            print(parameters)
+        print("key weight:")
+        for parameters in key_weight.parameters():
+            print(parameters)
+
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
-        train_metrics = train(train_loader, model, optimizer, criterion, teachers, args.T)
+        train_metrics = train(train_loader, model, optimizer, criterion, teachers, args.T, query_weight, key_weight)
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
         writer.add_scalar('Train/kd_loss', train_metrics['loss_kd'], i + 1)
@@ -304,11 +278,6 @@ if __name__ == '__main__':
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
         writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
         writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
-
-        teachers_metrics = evaluate_teachers(test_loader, model, teachers, criterion)
-        writer.add_scalar('Test/Teacher_Loss', teachers_metrics['teachers_test_loss'], i + 1)
-        writer.add_scalar('Test/Teacher_AccTop1', teachers_metrics['teachers_test_accTop1'], i + 1)
-        writer.add_scalar('Test/teacher_AccTop5', teachers_metrics['teachers_test_accTop5'], i + 1)
 
         if (i + 1) % args.k == 0:
             teacher_new = copy.deepcopy(model)
@@ -322,12 +291,12 @@ if __name__ == '__main__':
                     'epoch': i + 1,
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
-        last_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'save_snapshot', 'last.pth')
+        last_path = os.path.join(args.outdir, args.arch, ss + str(args.atten), 'save_snapshot', 'last.pth')
         # torch.save(save_dic, last_path)
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            best_path = os.path.join(args.outdir, args.arch, 'atten' + str(args.atten), 'save_snapshot', 'best.pth')
+            best_path = os.path.join(args.outdir, args.arch, ss + str(args.atten), 'save_snapshot', 'best.pth')
             # torch.save(save_dic, best_path)
         scheduler.step()
 

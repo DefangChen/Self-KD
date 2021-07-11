@@ -53,17 +53,17 @@ nohup python train_SD_attention.py --atten 5 --gpu 0 --arch wide_resnet20_8 --st
 nohup python train_SD_attention.py --atten 5 --gpu 1 --arch wide_resnet20_8 --step 5 --warm_up 100 > SD_step5_atten5_wide_resnet20_8.out 2>&1 &
 
 #8.New Method
-nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V8_atten --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
-nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V8_atten --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New.py --gpu 2,3 --arch wide_resnet20_8 --outdir save_New_V8_atten --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V0_1 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V0_1 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 2,3 --arch wide_resnet20_8 --outdir save_New_V0_1 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
 
-nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V8_atten --factor 8 --atten 1 > New_vgg19_atten3.out 2>&1 &
-nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V8_atten --factor 8 --atten 1 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New.py --gpu 4,5 --arch wide_resnet20_8 --outdir save_New_V8_atten --factor 8 --atten 1 > New_wide_resnet20_8_atten3.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V0_1 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V0_1 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
+nohup python train_New.py --gpu 0,1,3 --arch wide_resnet20_8 --outdir save_New_V0_1 --factor 8 --atten 1 > New_wide_resnet20_8_atten1.out 2>&1 &
 
-nohup python train_New.py --gpu 2 --tea_avg --arch vgg19 --outdir save_New_V8_avg --atten 3 > New_vgg19_avg.out 2>&1 &
-nohup python train_New.py --gpu 1 --tea_avg --arch resnet32 --outdir save_New_V8_avg --atten 3 > New_resnet32_avg.out 2>&1 &
-nohup python train_New.py --gpu 4,5 --tea_avg --arch wide_resnet20_8 --outdir save_New_V8_avg --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
+nohup python train_New.py --gpu 0 --tea_avg --arch vgg19 --outdir save_New_V0_1 --atten 3 > New_vgg19_avg.out 2>&1 &
+nohup python train_New.py --gpu 1 --tea_avg --arch resnet32 --outdir save_New_V0_1 --atten 3 > New_resnet32_avg.out 2>&1 &
+nohup python train_New.py --gpu 2,3 --tea_avg --arch wide_resnet20_8 --outdir save_New_V0_1 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
 
 #9.New Method2
 nohup python train_New2.py --gpu 0 --arch vgg19 > New2_vgg19.out 2>&1 &
@@ -71,6 +71,15 @@ nohup python train_New2.py --gpu 2 --arch resnet32 --outdir save_New2_KD --sd_KD
 nohup python train_New2.py --gpu 1 --arch wide_resnet20_8 > New2_wide_resnet20_8.out 2>&1 &
 
 #10.change_LWR  用来检测是不是因为每个minibatch更新软标签导致效果的提升（修改为每个epoch更新标签）
-nohup python change_LWR.py --gpu 0 --model resnet32 --outdir save_change_LWR3 > change_LWR_resnet32.out 2>&1 &
-nohup python change_LWR.py --gpu 1 --model vgg19 --outdir save_change_LWR3 > change_LWR_vgg19.out 2>&1 &
-nohup python change_LWR.py --gpu 3 --model wide_resnet20_8 --outdir save_change_LWR3 > change_LWR_wide_resnet20_8.out 2>&1 &
+nohup python change_LWR.py --gpu 0 --model resnet32 --outdir save_change_LWR > change_LWR_resnet32.out 2>&1 &
+nohup python change_LWR.py --gpu 1 --model vgg19 --outdir save_change_LWR > change_LWR_vgg19.out 2>&1 &
+nohup python change_LWR.py --gpu 2 --model wide_resnet20_8 --outdir save_change_LWR > change_LWR_wide_resnet20_8.out 2>&1 &
+
+
+nohup python train_baseline_randaug.py --gpu 3 --model vgg19 --outdir save_baseline_randaug2 > baseline_vgg19.out 2>&1 &
+nohup python train_baseline_randaug.py --gpu 4 --model resnet32 --outdir save_baseline_randaug2 > baseline_resnet32.out 2>&1 &
+nohup python train_baseline_randaug.py --gpu 5 --model wide_resnet20_8 --outdir save_baseline_randaug2 > baseline_wide_resnet20_8.out 2>&1 &
+
+nohup python train_LWR_randaug.py --gpu 0 --model vgg19 --outdir save_LWR_randaug > LWR_vgg19.out 2>&1 &
+nohup python train_LWR_randaug.py --gpu 1 --model resnet32 --outdir save_LWR_randaug > LWR_resnet32.out 2>&1 &
+nohup python train_LWR_randaug.py --gpu 2 --model wide_resnet20_8 --outdir save_LWR_randaug > LWR_wide_resnet20_8.out 2>&1 &

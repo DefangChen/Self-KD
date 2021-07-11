@@ -85,7 +85,7 @@ class VGG(nn.Module):
         x = self.layer3(x)  # Bx512x2x2
         x = self.layer4(x)  # Bx512x1x1
 
-        x_f = x.view(x.size(0), -1)
+        x_f = x.view(x.size(0), -1)  # Bx512
         x = self.classifier(x_f)
         if self.KD:
             return x_f, x
