@@ -12,7 +12,7 @@ Deep Residual Learning for Image Recognition. https://arxiv.org/abs/1512.03385
 import torch
 import torch.nn as nn
 
-__all__ = ['ResNet', 'resnet32', 'resnet110', 'wide_resnet20_8']
+__all__ = ['ResNet', 'resnet32', 'resnet56', 'resnet110', 'wide_resnet20_8']
 
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
@@ -201,6 +201,12 @@ def resnet32(pretrained=False, path=None, **kwargs):
         pretrained (bool): If True, returns a models pre-trained.
     """
 
+    model = ResNet(BasicBlock, [5, 5, 5], **kwargs)
+    if pretrained:
+        model.load_state_dict((torch.load(path))['state_dict'])
+    return model
+
+def resnet56(pretrained=False, path=None, **kwargs):
     model = ResNet(BasicBlock, [5, 5, 5], **kwargs)
     if pretrained:
         model.load_state_dict((torch.load(path))['state_dict'])

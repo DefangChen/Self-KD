@@ -180,15 +180,15 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, a
         result_test_metrics[epoch] = test_metrics
 
         # Save latest train/test metrics
-        torch.save(result_train_metrics, os.path.join(model_dir, 'train_metrics'))
-        torch.save(result_test_metrics, os.path.join(model_dir, 'test_metrics'))
+        # torch.save(result_train_metrics, os.path.join(model_dir, 'train_metrics'))
+        # torch.save(result_test_metrics, os.path.join(model_dir, 'test_metrics'))
 
         last_path = os.path.join(model_dir, 'save_model', 'last.pth')
-        torch.save({'state_dict': model.state_dict(),
-                    'optim_dict': optimizer.state_dict(),
-                    'epoch': epoch + 1,
-                    'test_accTop1': test_metrics['test_accTop1'],
-                    'test_accTop5': test_metrics['test_accTop5']}, last_path)
+        # torch.save({'state_dict': model.state_dict(),
+        #             'optim_dict': optimizer.state_dict(),
+        #             'epoch': epoch + 1,
+        #             'test_accTop1': test_metrics['test_accTop1'],
+        #             'test_accTop5': test_metrics['test_accTop5']}, last_path)
 
         is_best = test_acc >= best_acc
         if is_best:
@@ -196,8 +196,8 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, a
             best_acc = test_acc
             # Save best metrics in a json file in the models directory
             test_metrics['epoch'] = epoch + 1
-            utils.save_dict_to_json(test_metrics, os.path.join(model_dir, "test_best_metrics.json"))
-            shutil.copyfile(last_path, os.path.join(model_dir, 'save_model', 'best.pth'))
+            # utils.save_dict_to_json(test_metrics, os.path.join(model_dir, "test_best_metrics.json"))
+            # shutil.copyfile(last_path, os.path.join(model_dir, 'save_model', 'best.pth'))
         scheduler.step()
     writer.close()
 
@@ -205,8 +205,6 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, a
 if __name__ == '__main__':
     begin_time = time.time()
     model_dir = args.outdir
-    utils.solve_dir(model_dir)
-    utils.solve_dir(os.path.join(model_dir, args.model))
     utils.solve_dir(os.path.join(model_dir, args.model, 'save_model'))
     utils.solve_dir(os.path.join(model_dir, args.model, 'log'))
 
@@ -270,4 +268,4 @@ if __name__ == '__main__':
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     state['Total params'] = num_params
     params_json_path = os.path.join(model_dir, "parameters.json")  # save parameters
-    utils.save_dict_to_json(state, params_json_path)
+    # utils.save_dict_to_json(state, params_json_path)
