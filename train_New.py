@@ -62,7 +62,7 @@ class Linear_Model(nn.Module):
         return x
 
 
-def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, key_weight):
+def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, key_weight, cur_epoch):
     model.train()
 
     loss_total = utils.AverageMeter()
@@ -71,6 +71,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
     end = time.time()
+    alpha = 1 - 0.9 * (cur_epoch - cur_epoch % args.k) / args.num_epochs  # 交叉熵loss前面的系数
 
     with tqdm(total=len(train_loader)) as t:
         for _, (img, labels_batch) in enumerate(train_loader):
@@ -120,9 +121,8 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
                     final_teacher = final_teacher.squeeze(1)  # Bx100
                     # final_teacher = final_teacher.detach()
 
-                loss2 = F.kl_div(F.log_softmax(output / T, dim=1), final_teacher.detach(), reduction='batchmean') * T ** 2
-                loss3 = F.kl_div(F.log_softmax(final_teacher, dim=1), output.detach(), reduction='batchmean') * T ** 2
-                total_loss = loss1 + loss2 + loss3
+                loss2 = F.kl_div(F.log_softmax(output, dim=1), final_teacher, reduction='batchmean') * T ** 2
+                total_loss = alpha * loss1 + (1 - alpha) * loss2
             else:
                 loss2 = torch.tensor(0)
                 total_loss = loss1
@@ -258,18 +258,19 @@ if __name__ == '__main__':
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.schedule, gamma=0.1)
 
     for i in range(args.num_epochs):
-        print("teachers_num:", len(teachers))
-        print("query weight:")
-        for parameters in query_weight.parameters():
-            print(parameters)
-        print("key weight:")
-        for parameters in key_weight.parameters():
-            print(parameters)
+        # print("teachers_num:", len(teachers))
+        # print("query weight:")
+        # for parameters in query_weight.parameters():
+        #     print(parameters)
+        # print("key weight:")
+        # for parameters in key_weight.parameters():
+        #     print(parameters)
 
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
-        train_metrics = train(train_loader, model, optimizer, criterion, teachers, args.T, query_weight, key_weight)
+        train_metrics = train(train_loader, model, optimizer, criterion, teachers, args.T, query_weight, key_weight,
+                              i + 1)
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
         writer.add_scalar('Train/kd_loss', train_metrics['loss_kd'], i + 1)
