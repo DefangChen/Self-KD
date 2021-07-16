@@ -124,8 +124,8 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
 
                 loss2 = F.kl_div(F.log_softmax(output / T, dim=1), final_teacher, reduction='batchmean') * T ** 2
                 total_loss = alpha * loss1 + (1 - alpha) * loss2
-                loss_kd.update(alpha*loss2.item())
-                loss_label.update((1-alpha)*loss1.item())
+                loss_kd.update(alpha * loss2.item())
+                loss_label.update((1 - alpha) * loss1.item())
             else:
                 loss2 = torch.tensor(0)
                 total_loss = loss1
