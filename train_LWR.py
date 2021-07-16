@@ -22,7 +22,7 @@ from tensorboardX import SummaryWriter
 
 class LWR(torch.nn.Module):
     def __init__(self, k: int, num_batches_per_epoch: int, dataset_length: int, output_shape: Tuple[int],
-                 max_epochs: int, tau=5., update_rate=0.9, softmax_dim=1):
+                 max_epochs: int, tau=3., update_rate=0.9, softmax_dim=1):
         """
         Args:
             k: int, Number of Epochs after which soft labels are updated (interval)
