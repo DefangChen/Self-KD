@@ -86,7 +86,11 @@ def accuracy(output, target, topk=(1,)):
 
 # 用在ban当中
 def kd_loss(outputs, labels, teacher_outputs, alpha=0.2, T=3):
-    KD_loss = T ** 2 * nn.KLDivLoss(reduction='batchmean')(F.log_softmax(outputs / T, dim=1), F.softmax(teacher_outputs / T, dim=1)) * alpha + F.cross_entropy(outputs, labels) * (1. - alpha)
+    KD_loss = T ** 2 * nn.KLDivLoss(reduction='batchmean')(F.log_softmax(outputs / T, dim=1),
+                                                           F.softmax(teacher_outputs / T,
+                                                                     dim=1)) * alpha + F.cross_entropy(outputs,
+                                                                                                       labels) * (
+                      1. - alpha)
     return KD_loss
 
 
@@ -158,7 +162,7 @@ class LWR(torch.nn.Module):
             if cur_epoch == self.k:
                 self.labels[batch_idx, ...] = F.softmax(logits / self.tau,
                                                         dim=self.softmax_dim).detach().clone().cpu()
-            return F.cross_entropy(logits, y_true)
+            return F.cross_entropy(logits, y_true), torch.tensor(0)
         else:
             if cur_epoch % self.k == 0:
                 self.labels[batch_idx, ...] = F.softmax(logits / self.tau,
@@ -171,8 +175,8 @@ class LWR(torch.nn.Module):
             F.log_softmax(logits / self.tau, dim=self.softmax_dim),
             self.labels[batch_idx, ...].to(logits.get_device()),
             reduction='batchmean')
-        total_loss = loss1 + loss2
-        return total_loss
+        # total_loss = loss1 + loss2
+        return loss1, loss2
 
 
 def solve_dir(dir):

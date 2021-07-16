@@ -48,6 +48,8 @@ def train(model, train_loader, optimizer, lwr, cur_epoch):
     loss_avg = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
+    loss_kd = utils.AverageMeter()
+    loss_label = utils.AverageMeter()
     end = time.time()
 
     with tqdm(total=len(train_loader)) as t:
@@ -55,7 +57,8 @@ def train(model, train_loader, optimizer, lwr, cur_epoch):
             data, target = data.to(device), target.to(device)
 
             output = model(data)
-            loss = lwr(batch_idx, output, target, cur_epoch)
+            loss1, loss2 = lwr(batch_idx, output, target, cur_epoch)
+            loss = loss1 + loss2
 
             optimizer.zero_grad()
             loss.backward()
@@ -65,12 +68,16 @@ def train(model, train_loader, optimizer, lwr, cur_epoch):
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
             loss_avg.update(loss.item())
+            loss_kd.update(loss2.item())
+            loss_label.update(loss1.item())
 
             t.update()
 
     train_metrics = {'train_loss': loss_avg.value(),
                      'train_accTop1': accTop1_avg.value(),
                      'train_accTop5': accTop5_avg.value(),
+                     'kd_loss': loss_kd.value(),
+                     'label_loss': loss_label.value(),
                      'time': time.time() - end}
 
     metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
@@ -174,6 +181,8 @@ if __name__ == '__main__':
         train_metrics = train(model, train_loader, optimizer, lwr, i + 1)
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
+        writer.add_scalar('Train/label_loss', train_metrics['label_loss'], i + 1)
+        writer.add_scalar('Train/kd_loss', train_metrics['kd_loss'], i + 1)
 
         test_metrics = evaluate(model, test_loader)
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
@@ -187,12 +196,12 @@ if __name__ == '__main__':
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
         last_path = os.path.join(args.outdir, args.model, 'save_model', 'last_model.pth')
-        torch.save(save_dic, last_path)
+        # torch.save(save_dic, last_path)
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
             best_path = os.path.join(args.outdir, args.model, 'save_model', 'best_model.pth')
-            torch.save(save_dic, last_path)
+            # torch.save(save_dic, last_path)
         scheduler.step()
 
     writer.close()

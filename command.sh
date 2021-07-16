@@ -5,9 +5,9 @@ nohup python train_baseline.py --gpu 1 --model resnet32 --outdir save_baseline >
 nohup python train_baseline.py --gpu 2 --model wide_resnet20_8 --outdir save_baseline > baseline_wide_resnet20_8.out 2>&1 &
 
 #2.LWR:(finished)
-nohup python train_LWR.py --gpu 1 --outdir save_LWR3 --model vgg19 > LWR_vgg19.out 2>&1 &
-nohup python train_LWR.py --gpu 2 --outdir save_LWR3 --model resnet32 > LWR_resnet32.out 2>&1 &
-nohup python train_LWR.py --gpu 5 --outdir save_LWR3 --model wide_resnet20_8 > LWR_wide_resnet20_8.out 2>&1 &
+nohup python train_LWR.py --gpu 0 --outdir save_LWR3 --model vgg19 > LWR_vgg19.out 2>&1 &
+nohup python train_LWR.py --gpu 0 --outdir save_LWR_test --model resnet32 > LWR_resnet32.out 2>&1 &
+nohup python train_LWR.py --gpu 1 --outdir save_LWR_V1_test --model wide_resnet20_8 > LWR_wide_resnet20_8_1.out 2>&1 &
 
 #3.ban(finished 可以增加lr调整的trick)
 nohup python train_ban.py --gpu 3 --model vgg19 > ban_vgg19.out 2>&1 &
@@ -58,17 +58,17 @@ nohup python train_New.py --gpu 2 --tea_avg --arch resnet32 --outdir save_New_V0
 nohup python train_New.py --gpu 5,0 --tea_avg --arch wide_resnet20_8 --outdir save_New_V0_3 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
 
 #8.1.New Method V1
-nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V1_2 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
-nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V1_2 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New.py --gpu 7,0 --arch wide_resnet20_8 --outdir save_New_V1_2 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V1_3 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V1_3 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 3 --arch wide_resnet20_8 --outdir save_New_V1_3 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
 
-nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V1_1 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
-nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V1_1 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
-nohup python train_New.py --gpu 3 --arch wide_resnet20_8 --outdir save_New_V1_1 --factor 8 --atten 1 > New_wide_resnet20_8_atten1.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V1_3 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V1_3 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
+nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_V1_3 --factor 8 --atten 1 > New_wide_resnet20_8_atten1.out 2>&1 &
 
-nohup python train_New.py --gpu 1 --tea_avg --arch vgg19 --outdir save_New_V1_1 --atten 3 > New_vgg19_avg.out 2>&1 &
-nohup python train_New.py --gpu 0 --tea_avg --arch resnet32 --outdir save_New_V1_1 --atten 3 > New_resnet32_avg.out 2>&1 &
-nohup python train_New.py --gpu 2 --tea_avg --arch wide_resnet20_8 --outdir save_New_V1_1 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
+nohup python train_New.py --gpu 0 --tea_avg --arch vgg19 --outdir save_New_V1_1 --atten 3 > New_vgg19_avg.out 2>&1 &
+nohup python train_New.py --gpu 1 --tea_avg --arch resnet32 --outdir save_New_V1_1 --atten 3 > New_resnet32_avg.out 2>&1 &
+nohup python train_New.py --gpu 3 --tea_avg --arch wide_resnet20_8 --outdir save_New_V1_1 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
 
 #9.New Method2
 nohup python train_New2.py --gpu 0 --arch vgg19 > New2_vgg19.out 2>&1 &

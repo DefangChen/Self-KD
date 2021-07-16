@@ -121,7 +121,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
                     final_teacher = final_teacher.squeeze(1)  # Bx100
                     # final_teacher = final_teacher.detach()
 
-                loss2 = F.kl_div(F.log_softmax(output, dim=1), final_teacher, reduction='batchmean') * T ** 2
+                loss2 = F.kl_div(F.log_softmax(output / T, dim=1), final_teacher, reduction='batchmean') * T ** 2
                 total_loss = alpha * loss1 + (1 - alpha) * loss2
             else:
                 loss2 = torch.tensor(0)
@@ -258,14 +258,6 @@ if __name__ == '__main__':
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.schedule, gamma=0.1)
 
     for i in range(args.num_epochs):
-        # print("teachers_num:", len(teachers))
-        # print("query weight:")
-        # for parameters in query_weight.parameters():
-        #     print(parameters)
-        # print("key weight:")
-        # for parameters in key_weight.parameters():
-        #     print(parameters)
-
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
