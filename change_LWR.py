@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-
 from torch import Tensor
 from typing import Tuple
 
@@ -20,14 +19,9 @@ from torch.optim.lr_scheduler import MultiStepLR
 from tensorboardX import SummaryWriter
 
 
-class LWR(torch.nn.Module):
+class LWR1(torch.nn.Module):
     def __init__(self, k: int, num_batches_per_epoch: int, dataset_length: int, output_shape: Tuple[int],
-                 max_epochs: int, tau=5., update_rate=0.9, softmax_dim=1):
-        """
-        Args:
-            k: int, Number of Epochs after which soft labels are updated (interval)
-            num_batches
-        """
+                 max_epochs: int, tau=3., update_rate=0.9, softmax_dim=1):
         super().__init__()
         self.k = k
         self.update_rate = update_rate
@@ -35,46 +29,42 @@ class LWR(torch.nn.Module):
 
         self.num_batches_per_epoch = num_batches_per_epoch
         self.tau = tau  # 温度系数
-        self.alpha = 1.
+        # self.alpha = 1.
 
         self.softmax_dim = softmax_dim
-        self.labels = torch.zeros((dataset_length, *output_shape))  # 参数前面加*代表解压参数列表
+        self.labels = torch.zeros((dataset_length, *output_shape))
 
     def forward(self, batch_idx: Tensor, logits: Tensor, y_true: Tensor, cur_epoch: int):
         self.alpha = 1 - self.update_rate * (cur_epoch - cur_epoch % self.k) / self.max_epochs  # 交叉熵loss前面的系数
         if cur_epoch <= self.k:
-            if cur_epoch == self.k:
-                self.labels[batch_idx, ...] = F.softmax(logits / self.tau, dim=self.softmax_dim).detach().clone().cpu()
-            return F.cross_entropy(logits, y_true), torch.tensor(0)
+            loss1 = F.cross_entropy(logits, y_true)
+            loss2 = torch.tensor(0)
         else:
-            if cur_epoch % self.k == 0:
-                self.labels[batch_idx, ...] = F.softmax(logits / self.tau, dim=self.softmax_dim).detach().clone().cpu()
-            return self.loss_fn_with_kl(logits, y_true, batch_idx)
+            loss1, loss2 = self.loss_fn_with_kl(logits, y_true, batch_idx)
+        return loss1, loss2
 
     def loss_fn_with_kl(self, logits: Tensor, y_true: Tensor, batch_idx: Tensor):
         loss1 = self.alpha * F.cross_entropy(logits, y_true)
-        loss2 = (1 - self.alpha) * self.tau ** 2 * F.kl_div(F.log_softmax(logits / self.tau, dim=self.softmax_dim),
-                                                            self.labels[batch_idx, ...].to(logits.get_device()),
-                                                            reduction='batchmean')
-        # total_loss = loss1 + loss2
+        loss2 = (1 - self.alpha) * F.kl_div(F.log_softmax(logits / self.tau, dim=self.softmax_dim),
+                                            self.labels[batch_idx, ...].to(logits.get_device()),
+                                            reduction='batchmean') * self.tau ** 2
         return loss1, loss2
 
 
 parser = argparse.ArgumentParser(description='PyTorch LWR Example')
 parser.add_argument('--gpu', default='0', type=str)
+parser.add_argument('--k', default=5, type=int)
 parser.add_argument("--lr", type=float, default=0.1)
 parser.add_argument("--num_epochs", type=int, default=300)
 parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--dataset", type=str, default="CIFAR100")
-parser.add_argument("--outdir", type=str, default="save_LWR")
+parser.add_argument("--outdir", type=str, default="save_change_LWR2")
 parser.add_argument("--model", type=str, default="vgg19")
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
 parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
                     help='Learning rate step gamma (default: 0.1)')
-parser.add_argument('--seed', type=int, default=1, metavar='S',
-                    help='random seed (default: 1)')
 parser.add_argument('--temp', default=3.0, type=float, help='temperature scaling')
 args = parser.parse_args()
 
@@ -91,8 +81,8 @@ def train(model, train_loader, optimizer, lwr, cur_epoch):
     loss_avg = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
-    loss_kd = utils.AverageMeter()
-    loss_label = utils.AverageMeter()
+    label_loss = utils.AverageMeter()
+    kd_loss = utils.AverageMeter()
     end = time.time()
 
     with tqdm(total=len(train_loader)) as t:
@@ -107,20 +97,20 @@ def train(model, train_loader, optimizer, lwr, cur_epoch):
             loss.backward()
             optimizer.step()
 
-            metrics = utils.accuracy(output, target, topk=(1, 5))
+            metrics = utils.accuracy(output, target, topk=(1, 5))  # metircs代表指标
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
+            label_loss.update(loss1.item())
+            kd_loss.update(loss2.item())
             loss_avg.update(loss.item())
-            loss_kd.update(loss2.item())
-            loss_label.update(loss1.item())
 
             t.update()
 
     train_metrics = {'train_loss': loss_avg.value(),
                      'train_accTop1': accTop1_avg.value(),
                      'train_accTop5': accTop5_avg.value(),
-                     'kd_loss': loss_kd.value(),
-                     'label_loss': loss_label.value(),
+                     'label_loss': label_loss.value(),
+                     'kd_loss': kd_loss.value(),
                      'time': time.time() - end}
 
     metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
@@ -136,10 +126,11 @@ def evaluate(model, test_loader):
     end = time.time()
 
     with torch.no_grad():
-        for _, data, target in test_loader:
+        for batch_idx, data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
             loss = F.cross_entropy(output, target, reduction='mean')
+
             loss_avg.update(loss.item())
             metrics = utils.accuracy(output, target, topk=(1, 5))
             accTop1_avg.update(metrics[0].item())
@@ -207,14 +198,13 @@ if __name__ == '__main__':
     num_params = (sum(p.numel() for p in model.parameters()) / 1000000.0)
     logging.info('Total params: %.2fM' % num_params)
 
-    lwr = LWR(k=5, update_rate=0.9, num_batches_per_epoch=len(dataset1) // args.batch_size,
-              dataset_length=len(dataset1), output_shape=(num_classes,), tau=args.temp, max_epochs=args.num_epochs,
-              softmax_dim=1)
+    lwr = LWR1(k=args.k, update_rate=0.9, num_batches_per_epoch=len(dataset1) // args.batch_size,
+               dataset_length=len(dataset1), output_shape=(num_classes,), tau=args.temp, max_epochs=args.num_epochs,
+               softmax_dim=1)
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
     scheduler = MultiStepLR(optimizer, milestones=[150, 225], gamma=args.gamma, verbose=True)
     best_acc = 0
-
     writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.model))
 
     for i in range(args.num_epochs):
@@ -231,6 +221,13 @@ if __name__ == '__main__':
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
         writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
         writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
+
+        if (i + 1) % lwr.k == 0:
+            for _, (batch_idx, data, target) in enumerate(train_loader):
+                data, target = data.to(device), target.to(device)
+                model.eval()
+                output = model(data)
+                lwr.labels[batch_idx, ...] = F.softmax(output / args.temp, dim=1).detach().clone().cpu()
 
         test_acc = test_metrics['test_accTop1']
         save_dic = {'state_dict': model.state_dict(),

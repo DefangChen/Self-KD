@@ -5,8 +5,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import logging
 import torch
-from torch import Tensor
-from typing import Tuple
 
 
 def save_dict_to_json(d, json_path):
@@ -132,51 +130,6 @@ def adjust_learning_rate(args, optimizer, epoch):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-
-# 以下均使用在LWR当中 用于计算loss和保存每个sample的soft label
-class LWR(torch.nn.Module):
-    # 采用了函数注解
-    def __init__(self, k: int, num_batches_per_epoch: int, dataset_length: int, output_shape: Tuple[int],
-                 max_epochs: int, tau=5., update_rate=0.9, softmax_dim=1):
-        """
-        Args:
-            k: int, Number of Epochs after which soft labels are updated (interval)
-            num_batches
-        """
-        super().__init__()
-        self.k = k
-        self.update_rate = update_rate
-        self.max_epochs = max_epochs
-
-        self.num_batches_per_epoch = num_batches_per_epoch
-        self.tau = tau  # 温度系数
-        self.alpha = 1.
-
-        self.softmax_dim = softmax_dim  # 这个是啥？
-        # 为每个sample维护一个soft label 放在cpu内存当中不占用显存
-        self.labels = torch.zeros((dataset_length, *output_shape))  # 参数前面加*代表解压参数列表
-
-    def forward(self, batch_idx: Tensor, logits: Tensor, y_true: Tensor, cur_epoch: int):
-        self.alpha = 1 - self.update_rate * (cur_epoch - cur_epoch % self.k) / self.max_epochs  # 交叉熵loss前面的系数
-        if cur_epoch <= self.k:
-            if cur_epoch == self.k:
-                self.labels[batch_idx, ...] = F.softmax(logits / self.tau,
-                                                        dim=self.softmax_dim).detach().clone().cpu()
-            return F.cross_entropy(logits, y_true), torch.tensor(0)
-        else:
-            if cur_epoch % self.k == 0:
-                self.labels[batch_idx, ...] = F.softmax(logits / self.tau,
-                                                        dim=self.softmax_dim).detach().clone().cpu()
-            return self.loss_fn_with_kl(logits, y_true, batch_idx)
-
-    def loss_fn_with_kl(self, logits: Tensor, y_true: Tensor, batch_idx: Tensor):
-        loss1 = self.alpha * F.cross_entropy(logits, y_true)
-        loss2 = (1 - self.alpha) * self.tau ** 2 * F.kl_div(
-            F.log_softmax(logits / self.tau, dim=self.softmax_dim),
-            self.labels[batch_idx, ...].to(logits.get_device()),
-            reduction='batchmean')
-        # total_loss = loss1 + loss2
-        return loss1, loss2
 
 
 def solve_dir(dir):

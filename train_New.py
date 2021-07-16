@@ -71,6 +71,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
     end = time.time()
+
     alpha = 1 - 0.9 * (cur_epoch - cur_epoch % args.k) / args.num_epochs  # 交叉熵loss前面的系数
 
     with tqdm(total=len(train_loader)) as t:
@@ -123,9 +124,13 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
 
                 loss2 = F.kl_div(F.log_softmax(output / T, dim=1), final_teacher, reduction='batchmean') * T ** 2
                 total_loss = alpha * loss1 + (1 - alpha) * loss2
+                loss_kd.update(alpha*loss2.item())
+                loss_label.update((1-alpha)*loss1.item())
             else:
                 loss2 = torch.tensor(0)
                 total_loss = loss1
+                loss_kd.update(loss2.item())
+                loss_label.update(loss1.item())
 
             optimizer.zero_grad()
             total_loss.backward()
@@ -135,8 +140,6 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
             loss_total.update(total_loss.item())
-            loss_kd.update(loss2.item())
-            loss_label.update(loss1.item())
 
             t.update()
 
