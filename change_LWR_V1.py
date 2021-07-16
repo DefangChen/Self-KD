@@ -29,7 +29,7 @@ class LWR1(torch.nn.Module):
 
         self.num_batches_per_epoch = num_batches_per_epoch
         self.tau = tau  # 温度系数
-        # self.alpha = 1.
+        self.alpha = 1.
 
         self.softmax_dim = softmax_dim
         self.labels = torch.zeros((dataset_length, *output_shape))
@@ -91,6 +91,8 @@ def train(model, train_loader, optimizer, lwr, cur_epoch):
 
             output = model(data)
             loss1, loss2 = lwr(batch_idx, output, target, cur_epoch)
+            if cur_epoch % args.k == 0:
+                loss2 = torch.tensor(0)
             loss = loss1 + loss2
 
             optimizer.zero_grad()
@@ -223,11 +225,12 @@ if __name__ == '__main__':
         writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
 
         if (i + 1) % lwr.k == 0:
-            for _, (batch_idx, data, target) in enumerate(train_loader):
-                data, target = data.to(device), target.to(device)
-                model.eval()
-                output = model(data)
-                lwr.labels[batch_idx, ...] = F.softmax(output / args.temp, dim=1).detach().clone().cpu()
+            with torch.no_grad():
+                for _, (batch_idx, data, target) in enumerate(train_loader):
+                    data, target = data.to(device), target.to(device)
+                    model.eval()
+                    output = model(data)
+                    lwr.labels[batch_idx, ...] = F.softmax(output / args.temp, dim=1).detach().clone().cpu()
 
         test_acc = test_metrics['test_accTop1']
         save_dic = {'state_dict': model.state_dict(),
