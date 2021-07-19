@@ -74,4 +74,4 @@ def dataloader(data_name="CIFAR100", batch_size=128, num_workers=8, root='./Data
     trainloader = torch.utils.data.DataLoader(trainset, shuffle=True, **kwargs)
     testloader = torch.utils.data.DataLoader(testset, shuffle=False, **kwargs)
 
-    return trainloader, testloader, trainset
+    return trainloader, testloader, len(trainset)

@@ -18,12 +18,12 @@ import glob
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ensemble", type=bool, default=False)
-parser.add_argument("--test_num", type=int, default=1)  # ensemble测试使用的模型的数量
+parser.add_argument("--test_num", type=int, default=3)  # ensemble测试使用的模型的数量
 parser.add_argument('--gpu', default='2', type=str)
 parser.add_argument("--lr", type=float, default=0.1)
-parser.add_argument("--num_epochs", type=int, default=100)
+parser.add_argument("--num_epochs", type=int, default=200)
 parser.add_argument("--batch_size", type=int, default=128)
-parser.add_argument("--n_gen", type=int, default=3)
+parser.add_argument("--n_gen", type=int, default=10)
 parser.add_argument("--dataset", type=str, default="CIFAR100")
 parser.add_argument("--outdir", type=str, default="save_ban")
 parser.add_argument("--model", type=str, default="resnet32")
@@ -33,6 +33,7 @@ parser.add_argument('--dropout', default=0., type=float, help='Input the dropout
 parser.add_argument('--temp', default=3.0, type=float, help='temperature scaling')
 parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
                     help='Learning rate step gamma (default: 0.7)')
+parser.add_argument('--only_KL', action='store_true')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True  # 对于固定不变的网络可以起到优化作用
@@ -51,6 +52,8 @@ def train(train_loader, model, optimizer, criterion, teacher_model=None, gen=0):
     loss_avg = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
+    loss_kd = utils.AverageMeter()
+    loss_label = utils.AverageMeter()
     end = time.time()
 
     with tqdm(total=len(train_loader)) as t:
@@ -60,10 +63,19 @@ def train(train_loader, model, optimizer, criterion, teacher_model=None, gen=0):
 
             output_batch = model(train_batch)
             if gen == 0:
-                loss = criterion(output_batch, labels_batch)
+                loss1 = criterion(output_batch, labels_batch)
+                loss2 = torch.tensor(0)
             else:
                 teacher_output_batch = teacher_model(train_batch).detach()
-                loss = utils.kd_loss(output_batch, labels_batch, teacher_output_batch, T=args.temp)
+                if not args.only_KL:
+                    loss1, loss2 = utils.kd_loss(output_batch, labels_batch, teacher_output_batch, T=args.temp)
+                else:
+                    loss1 = torch.tensor(0)
+                    loss2 = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(output_batch / args.temp, dim=1),
+                                                                F.softmax(teacher_output_batch / args.temp, dim=1))
+            loss = loss1 + loss2
+            loss_label.update(loss1.item())
+            loss_kd.update(loss2.item())
 
             optimizer.zero_grad()
             loss.backward()
@@ -79,6 +91,8 @@ def train(train_loader, model, optimizer, criterion, teacher_model=None, gen=0):
         train_metrics = {'train_loss': loss_avg.value(),
                          'train_accTop1': accTop1_avg.value(),
                          'train_accTop5': accTop5_avg.value(),
+                         'label_loss': loss_label.value(),
+                         'loss_kd': loss_kd.value(),
                          'time': time.time() - end}
 
         metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in train_metrics.items())
@@ -119,23 +133,39 @@ def evaluate(test_loader, model, criterion):
 def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model=None, gen=0,
                        scheduler=None):
     best_acc = 0.0
+    best_loss = 1e+9
     for epoch in range(0, args.num_epochs):
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
+
         train_metrics = train(train_loader, model, optimizer, criterion, teacher_model, gen)
+        writer.add_scalar('Train/gen' + str(gen) + '/Loss', train_metrics['train_loss'], epoch + 1)
+        writer.add_scalar('Train/gen' + str(gen) + '/AccTop1', train_metrics['train_accTop1'], epoch + 1)
+        writer.add_scalar('Train/gen' + str(gen) + '/kd_loss', train_metrics['loss_kd'], epoch + 1)
+        writer.add_scalar('Train/gen' + str(gen) + '/label_loss', train_metrics['label_loss'], epoch + 1)
+
         test_metrics = evaluate(test_loader, model, criterion)
+        writer.add_scalar('Test/gen' + str(gen) + '/Loss', test_metrics['test_loss'], epoch + 1)
+        writer.add_scalar('Test/gen' + str(gen) + '/AccTop1', test_metrics['test_accTop1'], epoch + 1)
+        writer.add_scalar('Test/gen' + str(gen) + '/AccTop5', test_metrics['test_accTop5'], epoch + 1)
+
         test_acc = test_metrics['test_accTop1']
+        test_loss = test_metrics['test_loss']
         save_dic = {'state_dict': model.state_dict(),
                     'optim_dict': optimizer.state_dict(),
                     'epoch': epoch + 1,
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
         if test_acc >= best_acc:
-            logging.info("- Found better accuracy")
+            logging.info("gen" + str(gen) + "- Found better accuracy")
             best_acc = test_acc
-            best_model_weight = os.path.join(args.outdir, args.model, "save_gen_model",
-                                             "models" + str(gen) + ".pth.tar")
+        if test_loss < best_loss:
+            logging.info("gen" + str(gen) + "- Found better loss")
+            best_loss = test_loss
+            best_model_weight = os.path.join(args.outdir, args.model, ss, "save_gen_model",
+                                             "gen_models" + str(gen) + ".pth.tar")
             torch.save(save_dic, best_model_weight)
         scheduler.step()
+    writer.add_scalar('Gen_Test/AccTop1', best_acc, gen + 1)
 
 
 def ensemble_infer_test(test_loader, model_dir, model, criterion, num_classes, test_num):
@@ -150,7 +180,6 @@ def ensemble_infer_test(test_loader, model_dir, model, criterion, num_classes, t
     # 采用平均加和
     with torch.no_grad():
         for idx, (inputs, targets) in enumerate(test_loader):
-            print(idx, "start···")
             inputs, targets = inputs.to(device), targets.to(device)
             final_ans = torch.zeros(size=(targets.size()[0], num_classes)).to(device)
             for weight in weights:
@@ -197,13 +226,17 @@ def generate_model(model_folder, num_classes):
 
 if __name__ == '__main__':
     begin_time = time.time()
-    utils.solve_dir(args.outdir)
-    utils.solve_dir(os.path.join(args.outdir, args.model))
-    utils.solve_dir(os.path.join(args.outdir, args.model, 'save_gen_model'))
-    utils.solve_dir(os.path.join(args.outdir, args.model, 'log'))
+    if args.only_KL == True:
+        ss = 'only_KL'
+    else:
+        ss = 'label+KL'
+    utils.solve_dir(os.path.join(args.outdir, args.model, ss, 'save_gen_model'))
+    utils.solve_dir(os.path.join(args.outdir, args.model, ss, 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, args.model, 'log', now_time + 'train.log'))
+    utils.set_logger(os.path.join(args.outdir, args.model, ss, 'log', now_time + 'train.log'))
+
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.model, ss))  # tensorboard保存的路径
 
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
@@ -242,14 +275,14 @@ if __name__ == '__main__':
             train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model, gen, scheduler)
 
             teacher_model = generate_model(model_folder, num_classes)
-            last_model_weight = os.path.join(args.outdir, args.model, 'save_gen_model',
-                                             "models" + str(gen) + ".pth.tar")
+            last_model_weight = os.path.join(args.outdir, args.model, ss, 'save_gen_model',
+                                             "gen_models" + str(gen) + ".pth.tar")
             teacher_model.load_state_dict(torch.load(last_model_weight)['state_dict'])
             model = generate_model(model_folder, num_classes)
         logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
 
     logging.info('Begin Ensemble Infer···')
     criterion = nn.CrossEntropyLoss()
-    wbh = ensemble_infer_test(test_loader, os.path.join(args.outdir, args.model, 'save_gen_model'),
+    wbh = ensemble_infer_test(test_loader, os.path.join(args.outdir, args.model, ss, 'save_gen_model'),
                               generate_model(model_folder, num_classes), criterion, num_classes, args.test_num)
     logging.info('All tasks have been done!')
