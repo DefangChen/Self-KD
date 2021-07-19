@@ -46,34 +46,26 @@ os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def train(train_loader, model, optimizer, criterion, accuracy, args):
-    # set models to training mode
+def train(train_loader, model, optimizer, criterion, accuracy):
     model.train()
 
-    # summary for current training loop and a running average object for loss
     loss_avg = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
     end = time.time()
 
-    # Use tqdm for progress bar
     with tqdm(total=len(train_loader)) as t:
         for _, (train_batch, labels_batch) in enumerate(train_loader):
             train_batch = train_batch.cuda(non_blocking=True)
             labels_batch = labels_batch.cuda(non_blocking=True)
 
-            # compute models output and loss
             output_batch = model(train_batch)
             loss = criterion(output_batch, labels_batch)
 
-            # clear previous gradients, compute gradients of all variables wrt loss
             optimizer.zero_grad()
             loss.backward()
-
-            # performs updates using calculated gradients
             optimizer.step()
 
-            # Update average loss and accuracy
             metrics = accuracy(output_batch, labels_batch, topk=(1, 5))  # metircs代表指标
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
@@ -81,7 +73,6 @@ def train(train_loader, model, optimizer, criterion, accuracy, args):
 
             t.update()
 
-    # compute mean of all metrics in summary
     train_metrics = {'train_loss': loss_avg.value(),
                      'train_accTop1': accTop1_avg.value(),
                      'train_accTop5': accTop5_avg.value(),
@@ -93,8 +84,7 @@ def train(train_loader, model, optimizer, criterion, accuracy, args):
     return train_metrics
 
 
-def evaluate(test_loader, model, criterion, accuracy, args):
-    # set models to evaluation mode
+def evaluate(test_loader, model, criterion, accuracy):
     model.eval()
     loss_avg = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
@@ -158,19 +148,14 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, a
 
     for epoch in range(start_epoch, args.num_epochs):
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
-        train_metrics = train(train_loader, model, optimizer, criterion, accuracy, args)
 
+        train_metrics = train(train_loader, model, optimizer, criterion, accuracy)
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], epoch + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], epoch + 1)
         writer.add_scalar('Train/AccTop5', train_metrics['train_accTop5'], epoch + 1)
 
-        test_metrics = evaluate(test_loader, model, criterion, accuracy, args)
-
-        # Find the best accTop1 models.
-        if choose_accTop1:
-            test_acc = test_metrics['test_accTop1']
-        else:
-            test_acc = test_metrics['test_accTop5']
+        test_metrics = evaluate(test_loader, model, criterion, accuracy)
+        test_acc = test_metrics['test_accTop1']
 
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], epoch + 1)
         writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], epoch + 1)
@@ -183,18 +168,15 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, a
         # torch.save(result_train_metrics, os.path.join(model_dir, 'train_metrics'))
         # torch.save(result_test_metrics, os.path.join(model_dir, 'test_metrics'))
 
-        last_path = os.path.join(model_dir, 'save_model', 'last.pth')
+        # last_path = os.path.join(model_dir, 'save_model', 'last.pth')
         # torch.save({'state_dict': model.state_dict(),
         #             'optim_dict': optimizer.state_dict(),
         #             'epoch': epoch + 1,
         #             'test_accTop1': test_metrics['test_accTop1'],
         #             'test_accTop5': test_metrics['test_accTop5']}, last_path)
-
-        is_best = test_acc >= best_acc
-        if is_best:
+        if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            # Save best metrics in a json file in the models directory
             test_metrics['epoch'] = epoch + 1
             # utils.save_dict_to_json(test_metrics, os.path.join(model_dir, "test_best_metrics.json"))
             # shutil.copyfile(last_path, os.path.join(model_dir, 'save_model', 'best.pth'))
@@ -264,8 +246,8 @@ if __name__ == '__main__':
     # Train the models
     logging.info("Starting training for {} epoch(s)".format(args.num_epochs))
     train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, accuracy, model_dir, args)
-
-    logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     state['Total params'] = num_params
     params_json_path = os.path.join(model_dir, "parameters.json")  # save parameters
     # utils.save_dict_to_json(state, params_json_path)
+
+    logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))

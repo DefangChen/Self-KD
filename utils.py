@@ -87,7 +87,7 @@ def kd_loss(outputs, labels, teacher_outputs, alpha=0.2, T=3):
     label_loss = F.cross_entropy(outputs, labels) * (1. - alpha)
     kl_loss = T ** 2 * nn.KLDivLoss(reduction='batchmean')(F.log_softmax(outputs / T, dim=1),
                                                            F.softmax(teacher_outputs / T, dim=1)) * alpha
-    return label_loss,kl_loss
+    return label_loss, kl_loss
 
 
 # 用在be your own teacher当中

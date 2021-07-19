@@ -1,7 +1,7 @@
 ##对比方法：
 #1.baseline:(finished)
 nohup python train_baseline.py --gpu 0 --model vgg19 --outdir save_baseline > baseline_vgg19.out 2>&1 &
-nohup python train_baseline.py --gpu 1 --model resnet32 --outdir save_baseline > baseline_resnet32.out 2>&1 &
+nohup python train_baseline.py --gpu 2 --model resnet32 --outdir save_baseline_test_ban --num_epochs 3000 > baseline_resnet32.out 2>&1 &
 nohup python train_baseline.py --gpu 2 --model wide_resnet20_8 --outdir save_baseline > baseline_wide_resnet20_8.out 2>&1 &
 
 #2.LWR:(finished)
@@ -12,12 +12,12 @@ nohup python train_LWR.py --gpu 1 --outdir save_LWR2 --model wide_resnet20_8 > L
 nohup python train_LWR.py --gpu 2 --outdir save_LWR3 --model wide_resnet20_8 > LWR_wide_resnet20_8_1.out 2>&1 &
 
 #3.ban(finished 可以增加lr调整的trick)
-nohup python train_ban.py --gpu 2 --model vgg19 --only_KL --outdir save_ban --num_epochs 200 --n_gen 10 > ban_vgg19_KL.out 2>&1 &
-nohup python train_ban.py --gpu 3 --model vgg19  --outdir save_ban --num_epochs 200 --n_gen 10 > ban_vgg19_KL+label.out 2>&1 &
-nohup python train_ban.py --gpu 0 --model resnet32 --only_KL --outdir save_ban --num_epochs 200 --n_gen 10 > ban_resnet32_KL.out 2>&1 &
-nohup python train_ban.py --gpu 1 --model resnet32 --outdir save_ban --num_epochs 200 --n_gen 10 > ban_resnet32_KL+label.out 2>&1 &
-nohup python train_ban.py --gpu 0 --model wide_resnet20_8 --only_KL --outdir save_ban --num_epochs 200 --n_gen 10 > ban_vgg19_KL.out 2>&1 &
-nohup python train_ban.py --gpu 1 --model wide_resnet20_8  --outdir save_ban --num_epochs 200 --n_gen 10 > ban_vgg19_KL+label.out 2>&1 &
+nohup python train_ban.py --gpu 2 --model vgg19 --only_KL --outdir save_ban_test --num_epochs 200 --n_gen 10 > ban_vgg19_KL.out 2>&1 &
+nohup python train_ban.py --gpu 3 --model vgg19  --outdir save_ban_test --num_epochs 200 --n_gen 10 > ban_vgg19_KL+label.out 2>&1 &
+nohup python train_ban.py --gpu 0 --model resnet32 --only_KL --outdir save_ban_test --num_epochs 300 --n_gen 10 > ban_resnet32_KL.out 2>&1 &
+nohup python train_ban.py --gpu 1 --model resnet32 --outdir save_ban_test --num_epochs 300 --n_gen 10 > ban_resnet32_KL+label.out 2>&1 &
+nohup python train_ban.py --gpu 0 --model wide_resnet20_8 --only_KL --outdir save_ban_test --num_epochs 200 --n_gen 10 > ban_vgg19_KL.out 2>&1 &
+nohup python train_ban.py --gpu 1 --model wide_resnet20_8  --outdir save_ban_test --num_epochs 200 --n_gen 10 > ban_vgg19_KL+label.out 2>&1 &
 
 #4.CSKD(finished)
 nohup python train_CSKD.py --gpu 7 --model vgg19 > CSKD_vgg19.out 2>&1 &
@@ -63,9 +63,9 @@ nohup python train_New.py --gpu 2 --tea_avg --arch resnet32 --outdir save_New_V0
 nohup python train_New.py --gpu 5,0 --tea_avg --arch wide_resnet20_8 --outdir save_New_V0_3 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
 
 #8.1.New Method V1(加loss权重系数)
-nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V1_3 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
-nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V1_3 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New.py --gpu 3 --arch wide_resnet20_8 --outdir save_New_V1_3 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V2_1 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V2_1 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 3 --arch wide_resnet20_8 --outdir save_New_V2_1 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
 
 nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V1_3 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
 nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V1_3 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &

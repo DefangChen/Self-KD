@@ -111,16 +111,15 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
                     temp2 = temp2[:, None, :]
                     teacher_keys = torch.cat((teacher_keys, temp1), 2)  # B x 8 x atten
                     teacher_outputs = torch.cat((teacher_outputs, temp2), 1)  # B x atten x 100
-                teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
+                # teacher_outputs = F.softmax(teacher_outputs / T, dim=2)
                 if args.tea_avg:
                     final_teacher = teacher_outputs.mean(dim=1)
-                    # final_teacher = final_teacher.detach()
                 else:
                     energy = torch.bmm(student_query, teacher_keys)  # / math.sqrt(student_query.size(2))
                     attention = F.softmax(energy, dim=-1)  # B x 1 x atten 权重归一化
                     final_teacher = torch.bmm(attention, teacher_outputs)  # Bx1x100
                     final_teacher = final_teacher.squeeze(1)  # Bx100
-                    # final_teacher = final_teacher.detach()
+                final_teacher = F.softmax(final_teacher / T, dim=1)
 
                 loss2 = F.kl_div(F.log_softmax(output / T, dim=1), final_teacher, reduction='batchmean') * T ** 2
                 total_loss = alpha * loss1 + (1 - alpha) * loss2
