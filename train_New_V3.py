@@ -1,16 +1,8 @@
 """
-nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V2_3 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
-nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V2_3 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_V2_3 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
-
-nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V2_1 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
-nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V2_1 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
-nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_V2_1 --factor 8 --atten 1 > New_wide_resnet20_8_atten1.out 2>&1 &
-
-nohup python train_New.py --gpu 6 --tea_avg --arch vgg19 --outdir save_New_V2_3 --atten 3 > New_vgg19_avg.out 2>&1 &
-nohup python train_New.py --gpu 4 --tea_avg --arch resnet32 --outdir save_New_V2_3 --atten 3 > New_resnet32_avg.out 2>&1 &
-nohup python train_New.py --gpu 6 --tea_avg --arch wide_resnet20_8 --outdir save_New_V2_3 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
-改为将logits加权
+nohup python train_New_V3.py --gpu 0 --arch vgg19 --outdir save_New_V3_1 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
+nohup python train_New_V3.py --gpu 1 --arch resnet32 --outdir save_New_V3_1 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
+nohup python train_New_V3.py --gpu 2,3 --arch wide_resnet20_8 --outdir save_New_V3_1 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
+V2基础上除去了学生的T参数
 """
 
 import argparse
@@ -136,7 +128,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
                     final_teacher = final_teacher.squeeze(1)  # Bx100
                 final_teacher = F.softmax(final_teacher / T, dim=1)
 
-                loss2 = F.kl_div(F.log_softmax(output / T, dim=1), final_teacher, reduction='batchmean') * T ** 2
+                loss2 = F.kl_div(F.log_softmax(output, dim=1), final_teacher, reduction='batchmean') * T ** 2
                 total_loss = alpha * loss1 + (1 - alpha) * loss2
                 loss_kd.update(alpha * loss2.item())
                 loss_label.update((1 - alpha) * loss1.item())
@@ -239,9 +231,6 @@ if __name__ == '__main__':
     elif "vgg" in args.arch:
         model_cfg = getattr(model_fd, 'vgg')
         model = getattr(model_cfg, args.arch)(num_classes=num_classes, KD=True, dropout=args.dropout)
-    elif "densenet" in args.arch:
-        model_cfg = getattr(model_fd, 'densenet')
-        model = getattr(model_cfg, args.arch)(num_classes=num_classes, KD=True)
 
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model).to(device)

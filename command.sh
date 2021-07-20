@@ -63,17 +63,17 @@ nohup python train_New.py --gpu 2 --tea_avg --arch resnet32 --outdir save_New_V0
 nohup python train_New.py --gpu 5,0 --tea_avg --arch wide_resnet20_8 --outdir save_New_V0_3 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
 
 #8.1.New Method V1(加loss权重系数)
-nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V2_1 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
-nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V2_1 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New.py --gpu 3 --arch wide_resnet20_8 --outdir save_New_V2_1 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V2_3 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V2_3 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_V2_3 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
 
-nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V1_3 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
-nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V1_3 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
-nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_V1_3 --factor 8 --atten 1 > New_wide_resnet20_8_atten1.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V2_1 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V2_1 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
+nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_V2_1 --factor 8 --atten 1 > New_wide_resnet20_8_atten1.out 2>&1 &
 
-nohup python train_New.py --gpu 0 --tea_avg --arch vgg19 --outdir save_New_V1_1 --atten 3 > New_vgg19_avg.out 2>&1 &
-nohup python train_New.py --gpu 1 --tea_avg --arch resnet32 --outdir save_New_V1_1 --atten 3 > New_resnet32_avg.out 2>&1 &
-nohup python train_New.py --gpu 3 --tea_avg --arch wide_resnet20_8 --outdir save_New_V1_1 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
+nohup python train_New.py --gpu 6 --tea_avg --arch vgg19 --outdir save_New_V2_3 --atten 3 > New_vgg19_avg.out 2>&1 &
+nohup python train_New.py --gpu 4 --tea_avg --arch resnet32 --outdir save_New_V2_3 --atten 3 > New_resnet32_avg.out 2>&1 &
+nohup python train_New.py --gpu 6 --tea_avg --arch wide_resnet20_8 --outdir save_New_V2_3 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
 
 #8.2.New(V2) 2加权重系数，2.1不加
 nohup python train_New_V2.py --gpu 3 --outdir save_New_V2_2 --model vgg19 > New_V2_vgg19.out 2>&1 &
