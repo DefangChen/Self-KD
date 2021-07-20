@@ -96,18 +96,14 @@ def evaluate(test_loader, model, criterion, accuracy):
             test_batch = test_batch.cuda(non_blocking=True)
             labels_batch = labels_batch.cuda(non_blocking=True)
 
-            # compute models output
             output_batch = model(test_batch)
             loss = criterion(output_batch, labels_batch)
 
-            # Update average loss and accuracy
-            metrics = accuracy(output_batch, labels_batch, topk=(1, 5))  # topk指的是什么？
-            # only one element tensors can be converted to Python scalars
+            metrics = accuracy(output_batch, labels_batch, topk=(1, 5))
             accTop1_avg.update(metrics[0].item())
             accTop5_avg.update(metrics[1].item())
             loss_avg.update(loss.item())
 
-    # compute mean of all metrics in summary
     test_metrics = {'test_loss': loss_avg.value(),
                     'test_accTop1': accTop1_avg.value(),
                     'test_accTop5': accTop5_avg.value(),
@@ -129,7 +125,6 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, a
     result_test_metrics = list(range(args.num_epochs))
 
     if args.resume:
-        # Load checkpoint.
         logging.info('Resuming from checkpoint..')
         resumePath = os.path.join(args.resume, 'last.pth')
         assert os.path.isfile(resumePath), 'Error: no checkpoint directory found!'
@@ -200,7 +195,6 @@ if __name__ == '__main__':
     logging.info("- All args are followed:\n" + metrics_string)
 
     logging.info("Loading the datasets...")
-    # set number of classes
     if args.dataset == 'CIFAR10':
         num_classes = 10
         model_folder = "model_cifar"
@@ -214,11 +208,9 @@ if __name__ == '__main__':
         model_folder = "model_imagenet"
         root = './Data'
 
-    # Load data
     train_loader, test_loader = dataloader(data_name=args.dataset, batch_size=args.batch_size, root=root)
     logging.info("- Done.")
 
-    # Training from scratch
     model_fd = getattr(models, model_folder)
     if "resnet" in args.model:
         model_cfg = getattr(model_fd, 'resnet')
@@ -238,12 +230,10 @@ if __name__ == '__main__':
     num_params = (sum(p.numel() for p in model.parameters()) / 1000000.0)
     logging.info('Total params: %.2fM' % num_params)
 
-    # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
     accuracy = utils.accuracy
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
 
-    # Train the models
     logging.info("Starting training for {} epoch(s)".format(args.num_epochs))
     train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, accuracy, model_dir, args)
     state['Total params'] = num_params

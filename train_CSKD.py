@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 import models
 import utils
+from tensorboardX import SummaryWriter
 from dataset.dataloader_CSKD import load_dataset
 
 parser = argparse.ArgumentParser(description='Pytorch CSKD')
@@ -20,6 +21,8 @@ parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--dataset", type=str, default="CIFAR100")
 parser.add_argument("--outdir", type=str, default="save_CSKD_model")
 parser.add_argument("--model", type=str, default="resnet32")
+parser.add_argument('--schedule', type=int, nargs='+', default=[150, 225],
+                    help='Decrease learning rate at these epochs.')
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--dropout', default=0., type=float, help='Input the dropout rate: default(0.0)')
@@ -34,18 +37,6 @@ if torch.cuda.is_available():
     device = torch.device("cuda")
 else:
     device = "cpu"
-
-
-def adjust_learning_rate(optimizer, epoch):
-    """decrease the learning rate at 100 and 150 epoch"""
-    lr = args.lr
-    if epoch >= 0.5 * args.num_epochs:
-        lr /= 10
-    if epoch >= 0.75 * args.num_epochs:
-        lr /= 10
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-
 
 # 与model的用法相同，重载了forward函数
 class KDLoss(nn.Module):
@@ -142,8 +133,7 @@ def evaluate(test_loader, model, criterion):
 
 if __name__ == '__main__':
     begin_time = time.time()
-    utils.solve_dir(args.outdir)
-    utils.solve_dir(os.path.join(args.outdir, args.model))
+
     utils.solve_dir(os.path.join(args.outdir, args.model, 'save_model'))
     utils.solve_dir(os.path.join(args.outdir, args.model, 'log'))
 
@@ -195,27 +185,40 @@ if __name__ == '__main__':
     criterion1 = nn.CrossEntropyLoss()
     criterion2 = KDLoss(args.temp)
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
+    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.schedule, gamma=0.1)
 
     best_acc = 0
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch))
     for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
+        writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
         train_metrics = train(train_loader, model, optimizer, criterion1, criterion2)
-        test_metrics = evaluate(test_loader, model, criterion1)
-        test_acc = test_metrics['test_accTop1']
+        writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
+        writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
+        writer.add_scalar('Train/kd_loss', train_metrics['loss_kd'], i + 1)
+        writer.add_scalar('Train/label_loss', train_metrics['label_loss'], i + 1)
 
+        test_metrics = evaluate(test_loader, model, criterion1)
+        writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
+        writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], i + 1)
+        writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], i + 1)
+
+        test_acc = test_metrics['test_accTop1']
         save_dic = {'state_dict': model.state_dict(),
                     'optim_dict': optimizer.state_dict(),
                     'epoch': i + 1,
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
         last_path = os.path.join(args.outdir, args.model, 'save_model', 'last_model.pth')
-        torch.save(save_dic, last_path)
+        # torch.save(save_dic, last_path)
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
             best_path = os.path.join(args.outdir, args.model, 'save_model', 'best_model.pth')
-            torch.save(save_dic, best_path)
-        adjust_learning_rate(optimizer, i + 1)
+            # torch.save(save_dic, best_path)
+        scheduler.step()
 
+    writer.close()
+    logging.info("best_acc is {}".format(best_acc))
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))
     logging.info('All tasks have been done!')
