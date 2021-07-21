@@ -1,7 +1,7 @@
 """
-nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V2_3 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
-nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V2_3 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_V2_3 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V2_6 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New_V2_6 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_V2_6 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
 
 nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V2_1 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
 nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V2_1 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
@@ -138,8 +138,8 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
 
                 loss2 = F.kl_div(F.log_softmax(output / T, dim=1), final_teacher, reduction='batchmean') * T ** 2
                 total_loss = alpha * loss1 + (1 - alpha) * loss2
-                loss_kd.update(alpha * loss2.item())
-                loss_label.update((1 - alpha) * loss1.item())
+                loss_kd.update((1-alpha) * loss2.item())
+                loss_label.update(alpha * loss1.item())
             else:
                 loss2 = torch.tensor(0)
                 total_loss = loss1
