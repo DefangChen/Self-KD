@@ -4,9 +4,9 @@ nohup python train_New_V4.py --gpu 6 --model vgg19 --outdir save_New_V4_3 --fact
 nohup python train_New_V4.py --gpu 6 --model resnet32 --outdir save_New_V4_3 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
 nohup python train_New_V4.py --gpu 7 --model wide_resnet20_8 --outdir save_New_V4_3 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
 
-nohup python train_New_V4.py --gpu 2 --model vgg19 --outdir save_New_V4_3 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
-nohup python train_New_V4.py --gpu 1 --model resnet32 --outdir save_New_V4_3 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
-nohup python train_New_V4.py --gpu 0 --model wide_resnet20_8 --outdir save_New_V4_3 --factor 8 --atten 1 > New_wide_resnet20_8_atten1.out 2>&1 &
+nohup python train_New_V4.py --gpu 0 --model vgg19 --outdir save_New_V4_2 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
+nohup python train_New_V4.py --gpu 0 --model resnet32 --outdir save_New_V4_2 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
+nohup python train_New_V4.py --gpu 1 --model wide_resnet20_8 --outdir save_New_V4_2 --factor 8 --atten 1 > New_wide_resnet20_8_atten1.out 2>&1 &
 
 nohup python train_New_V4.py --gpu 1 --tea_avg --model vgg19 --outdir save_New_V4_3 --atten 3 > New_vgg19_avg.out 2>&1 &
 nohup python train_New_V4.py --gpu 2 --tea_avg --model resnet32 --outdir save_New_V4_3 --atten 3 > New_resnet32_avg.out 2>&1 &
@@ -53,6 +53,7 @@ parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
 parser.add_argument('--temp', default=3.0, type=float, help='temperature scaling')
+parser.add_argument('--tea_avg', action='store_true')
 args = parser.parse_args()
 
 torch.backends.cudnn.benchmark = True  # 对于固定不变的网络可以起到优化作用
@@ -112,19 +113,25 @@ class LWR(torch.nn.Module):
 
     def loss_fn_with_kl(self, query: Tensor, logits: Tensor, y_true: Tensor, batch_idx: Tensor):
         loss1 = self.alpha * F.cross_entropy(logits, y_true)
-        query = self.query_weight(query)
-        query = query[:, None, :]  # Bx1x8
-        tea_keys = self.keys[:, batch_idx, ...].to(device)
-        tea_keys = tea_keys.permute(1, 2, 0)  # Bx64xatten
-        tea_keys2 = torch.zeros(size=(tea_keys.size(0), tea_keys.size(1) // args.factor, self.cur_tea_num)).to(device)
-        for i in range(0, self.cur_tea_num):
-            tea_keys2[:, :, i] = self.key_weight(tea_keys[:, :, i])  # Bx8xatten
-        energy = torch.bmm(query, tea_keys2)  # / math.sqrt(student_query.size(2))
-        attention = F.softmax(energy, dim=-1)  # Bx1xatten
-        tea_value = self.values[:self.cur_tea_num, batch_idx, ...].to(device)  # attenxBx100
-        tea_value = tea_value.permute(1, 0, 2)  # Bxattenx100
-        final_teacher = torch.bmm(attention, tea_value)  # Bx1x100
-        final_teacher = final_teacher.squeeze(1)
+        if args.tea_avg:
+            tea_value = self.values[:self.cur_tea_num, batch_idx, ...].to(device)  # attenxBx100
+            tea_value = tea_value.permute(1, 0, 2)  # Bxattenx100
+            final_teacher = tea_value.mean(dim=1)
+        else:
+            query = self.query_weight(query)
+            query = query[:, None, :]  # Bx1x8
+            tea_keys = self.keys[:, batch_idx, ...].to(device)
+            tea_keys = tea_keys.permute(1, 2, 0)  # Bx64xatten
+            tea_keys2 = torch.zeros(size=(tea_keys.size(0), tea_keys.size(1) // args.factor, self.cur_tea_num)).to(
+                device)
+            for i in range(0, self.cur_tea_num):
+                tea_keys2[:, :, i] = self.key_weight(tea_keys[:, :, i])  # Bx8xatten
+            energy = torch.bmm(query, tea_keys2)  # / math.sqrt(student_query.size(2))
+            attention = F.softmax(energy, dim=-1)  # Bx1xatten
+            tea_value = self.values[:self.cur_tea_num, batch_idx, ...].to(device)  # attenxBx100
+            tea_value = tea_value.permute(1, 0, 2)  # Bxattenx100
+            final_teacher = torch.bmm(attention, tea_value)  # Bx1x100
+            final_teacher = final_teacher.squeeze(1)
         final_teacher = F.softmax(final_teacher / self.tau, dim=1)
         loss2 = (1 - self.alpha) * self.tau ** 2 * \
                 F.kl_div(F.log_softmax(logits / self.tau, dim=1), final_teacher, reduction='batchmean')
@@ -204,11 +211,15 @@ def evaluate(model, test_loader):
 if __name__ == '__main__':
     begin_time = time.time()
 
-    utils.solve_dir(os.path.join(args.outdir, args.model, 'save_model'))
-    utils.solve_dir(os.path.join(args.outdir, args.model, 'log'))
+    if args.tea_avg:
+        ss = "avg"
+    else:
+        ss = "atten"
+    utils.solve_dir(os.path.join(args.outdir, args.model, ss + str(args.atten), 'save_model'))
+    utils.solve_dir(os.path.join(args.outdir, args.model, ss + str(args.atten), 'log'))
 
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    utils.set_logger(os.path.join(args.outdir, args.model, 'log', now_time + 'train.log'))
+    utils.set_logger(os.path.join(args.outdir, args.model, ss + str(args.atten), 'log', now_time + 'train.log'))
 
     w = vars(args)
     metrics_string = " ;\n".join("{}: {}".format(k, v) for k, v in w.items())
@@ -276,7 +287,7 @@ if __name__ == '__main__':
     scheduler = MultiStepLR(optimizer, milestones=[0.5 * args.num_epochs, 0.75 * args.num_epochs], gamma=args.gamma,
                             verbose=True)
     best_acc = 0
-    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.model))
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.model, ss + str(args.atten)))
 
     for i in range(args.num_epochs):
         for parameters in lwr.query_weight.parameters():
@@ -303,12 +314,12 @@ if __name__ == '__main__':
                     'epoch': i + 1,
                     'test_accTop1': test_metrics['test_accTop1'],
                     'test_accTop5': test_metrics['test_accTop5']}
-        last_path = os.path.join(args.outdir, args.model, 'save_model', 'last_model.pth')
+        last_path = os.path.join(args.outdir, args.model, ss + str(args.atten), 'save_model', 'last_model.pth')
         # torch.save(save_dic, last_path)
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            best_path = os.path.join(args.outdir, args.model, 'save_model', 'best_model.pth')
+            best_path = os.path.join(args.outdir, args.model, ss + str(args.atten), 'save_model', 'best_model.pth')
             # torch.save(save_dic, last_path)
         scheduler.step()
 
