@@ -166,6 +166,7 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, t
             torch.save(save_dic, best_model_weight)
         scheduler.step()
     writer.add_scalar('Gen_Test/AccTop1', best_acc, gen + 1)
+    return best_acc
 
 
 def ensemble_infer_test(test_loader, model_dir, model, criterion, num_classes, test_num):
@@ -264,6 +265,7 @@ if __name__ == '__main__':
         logging.info('Total params: %.2fM' % num_params)
 
         teacher_model = None
+        final_best_acc = 0
         for gen in range(args.n_gen):
             logging.info('Generation {}/{}'.format(gen + 1, args.n_gen))
 
@@ -272,7 +274,10 @@ if __name__ == '__main__':
                                   weight_decay=args.wd)
             scheduler = MultiStepLR(optimizer, milestones=[args.num_epochs * 0.5, args.num_epochs * 0.75],
                                     gamma=args.gamma, verbose=True)
-            train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model, gen, scheduler)
+            qq = train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model, gen,
+                                    scheduler)
+            if qq > final_best_acc:
+                qq = final_best_acc
 
             teacher_model = generate_model(model_folder, num_classes)
             last_model_weight = os.path.join(args.outdir, args.model, ss, 'save_gen_model',
@@ -285,4 +290,5 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     wbh = ensemble_infer_test(test_loader, os.path.join(args.outdir, args.model, ss, 'save_gen_model'),
                               generate_model(model_folder, num_classes), criterion, num_classes, args.test_num)
+    logging.info('The final best acc is{}'.format(final_best_acc))
     logging.info('All tasks have been done!')

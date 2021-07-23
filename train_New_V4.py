@@ -1,16 +1,16 @@
 """
 采用改为iteration迭代存储key和value
-nohup python train_New_V4.py --gpu 6 --model vgg19 --outdir save_New_V4_3 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
-nohup python train_New_V4.py --gpu 6 --model resnet32 --outdir save_New_V4_3 --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New_V4.py --gpu 7 --model wide_resnet20_8 --outdir save_New_V4_3 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
+nohup python train_New_V4.py --gpu 5 --model vgg19 --outdir save_New_V4_3 --factor 8 --atten 3 > New_V4_vgg19_atten3_2.out 3>&1 &
+nohup python train_New_V4.py --gpu 5 --model resnet32 --outdir save_New_V4_3 --factor 8 --atten 3 > New_V4_resnet32_atten3_3.out 2>&1 &
+nohup python train_New_V4.py --gpu 6 --model wide_resnet20_8 --outdir save_New_V4_3 --factor 8 --atten 3 > New_V4_wide_resnet20_8_atten3_3.out 2>&1 &
 
-nohup python train_New_V4.py --gpu 0 --model vgg19 --outdir save_New_V4_2 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
-nohup python train_New_V4.py --gpu 0 --model resnet32 --outdir save_New_V4_2 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
-nohup python train_New_V4.py --gpu 1 --model wide_resnet20_8 --outdir save_New_V4_2 --factor 8 --atten 1 > New_wide_resnet20_8_atten1.out 2>&1 &
+nohup python train_New_V4.py --gpu 3 --tea_avg --model vgg19 --outdir save_New_V4_3 --atten 3 > New_V4_vgg19_avg_1.out 2>&1 &
+nohup python train_New_V4.py --gpu 3 --tea_avg --model resnet32 --outdir save_New_V4_3 --atten 3 > New_V4_resnet32_avg_1.out 2>&1 &
+nohup python train_New_V4.py --gpu 4 --tea_avg --model wide_resnet20_8 --outdir save_New_V4_3 --atten 3 > New_V4_wide_resnet20_8_avg_1.out 2>&1 &
 
-nohup python train_New_V4.py --gpu 1 --tea_avg --model vgg19 --outdir save_New_V4_3 --atten 3 > New_vgg19_avg.out 2>&1 &
-nohup python train_New_V4.py --gpu 2 --tea_avg --model resnet32 --outdir save_New_V4_3 --atten 3 > New_resnet32_avg.out 2>&1 &
-nohup python train_New_V4.py --gpu 5,0 --tea_avg --model wide_resnet20_8 --outdir save_New_V4_3 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
+nohup python train_New_V4.py --gpu 3 --model vgg19 --outdir save_New_V4_3 --factor 8 --atten 1 > New_V4_vgg19_atten1.out 2>&1 &
+nohup python train_New_V4.py --gpu 3 --model resnet32 --outdir save_New_V4_3 --factor 8 --atten 1 > New_V4_resnet32_atten1.out 2>&1 &
+nohup python train_New_V4.py --gpu 4 --model wide_resnet20_8 --outdir save_New_V4_3 --factor 8 --atten 1 > New_V4_wide_resnet20_8_atten1.out 2>&1 &
 """
 
 import argparse
@@ -97,19 +97,19 @@ class LWR(torch.nn.Module):
     # 传入的query应该是detach的，logits不应该detach
     def forward(self, batch_idx: Tensor, query: Tensor, logits: Tensor, y_true: Tensor, cur_epoch: int):
         self.alpha = 1 - self.update_rate * (cur_epoch - cur_epoch % self.k) / self.max_epochs  # 交叉熵loss前面的系数
+        self.cur_tea_num = (cur_epoch - 1) // self.k
+        if self.cur_tea_num > self.tea_num:
+            self.cur_tea_num = self.tea_num
         if cur_epoch <= self.k:
-            loss1, loss2 = F.cross_entropy(logits, y_true), torch.tensor(0)
+            ressult_tuple = F.cross_entropy(logits, y_true), torch.tensor(0)
         else:
             # 传入计算loss的query是一个克隆的向量，不影响下文存储为key
-            loss1, loss2 = self.loss_fn_with_kl(query.clone(), logits, y_true, batch_idx)
+            ressult_tuple = self.loss_fn_with_kl(query.clone(), logits, y_true, batch_idx)
         if cur_epoch % self.k == 0:
-            self.cur_tea_num += 1
-            if self.cur_tea_num > self.tea_num:
-                self.cur_tea_num = self.tea_num
             tea_index = (cur_epoch // self.k - 1) % self.tea_num
             self.keys[tea_index, batch_idx, ...] = query.detach().clone().cpu()  # 64
             self.values[tea_index, batch_idx, ...] = logits.detach().clone().cpu()  # 100
-        return loss1, loss2
+        return ressult_tuple
 
     def loss_fn_with_kl(self, query: Tensor, logits: Tensor, y_true: Tensor, batch_idx: Tensor):
         loss1 = self.alpha * F.cross_entropy(logits, y_true)
@@ -120,7 +120,7 @@ class LWR(torch.nn.Module):
         else:
             query = self.query_weight(query)
             query = query[:, None, :]  # Bx1x8
-            tea_keys = self.keys[:, batch_idx, ...].to(device)
+            tea_keys = self.keys[:self.cur_tea_num, batch_idx, ...].to(device)
             tea_keys = tea_keys.permute(1, 2, 0)  # Bx64xatten
             tea_keys2 = torch.zeros(size=(tea_keys.size(0), tea_keys.size(1) // args.factor, self.cur_tea_num)).to(
                 device)
@@ -128,14 +128,16 @@ class LWR(torch.nn.Module):
                 tea_keys2[:, :, i] = self.key_weight(tea_keys[:, :, i])  # Bx8xatten
             energy = torch.bmm(query, tea_keys2)  # / math.sqrt(student_query.size(2))
             attention = F.softmax(energy, dim=-1)  # Bx1xatten
+            print("attention:", attention)
             tea_value = self.values[:self.cur_tea_num, batch_idx, ...].to(device)  # attenxBx100
             tea_value = tea_value.permute(1, 0, 2)  # Bxattenx100
             final_teacher = torch.bmm(attention, tea_value)  # Bx1x100
             final_teacher = final_teacher.squeeze(1)
         final_teacher = F.softmax(final_teacher / self.tau, dim=1)
+
         loss2 = (1 - self.alpha) * self.tau ** 2 * \
                 F.kl_div(F.log_softmax(logits / self.tau, dim=1), final_teacher, reduction='batchmean')
-        return loss1, loss2
+        return loss1, loss2, final_teacher
 
 
 def train(model, train_loader, optimizer, lwr, cur_epoch):
@@ -143,6 +145,8 @@ def train(model, train_loader, optimizer, lwr, cur_epoch):
     loss_avg = utils.AverageMeter()
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
+    teacher_accTop1_avg = utils.AverageMeter()
+    teacher_accTop5_avg = utils.AverageMeter()
     loss_kd = utils.AverageMeter()
     loss_label = utils.AverageMeter()
     end = time.time()
@@ -153,7 +157,14 @@ def train(model, train_loader, optimizer, lwr, cur_epoch):
 
             x_f, output = model(data)
             x_f = x_f.detach()
-            loss1, loss2 = lwr(batch_idx, x_f, output, target, cur_epoch)
+            result_tuple = lwr(batch_idx, x_f, output, target, cur_epoch)
+            if len(result_tuple) == 2:
+                loss1, loss2 = result_tuple
+            elif len(result_tuple) == 3:
+                loss1, loss2, final_teacher = result_tuple
+                metrics_tea = utils.accuracy(final_teacher, target, topk=(1, 5))
+                teacher_accTop1_avg.update(metrics_tea[0].item())
+                teacher_accTop5_avg.update(metrics_tea[1].item())
             loss = loss1 + loss2
 
             optimizer.zero_grad()
@@ -172,6 +183,8 @@ def train(model, train_loader, optimizer, lwr, cur_epoch):
     train_metrics = {'train_loss': loss_avg.value(),
                      'train_accTop1': accTop1_avg.value(),
                      'train_accTop5': accTop5_avg.value(),
+                     'teacher_accTop1': teacher_accTop1_avg.value(),
+                     'teacher_accTop5': teacher_accTop5_avg.value(),
                      'kd_loss': loss_kd.value(),
                      'label_loss': loss_label.value(),
                      'time': time.time() - end}
@@ -290,10 +303,10 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.model, ss + str(args.atten)))
 
     for i in range(args.num_epochs):
-        for parameters in lwr.query_weight.parameters():
-            print(parameters)
-        for parameters in lwr.key_weight.parameters():
-            print(parameters)
+        # for parameters in lwr.query_weight.parameters():
+        #     print(parameters)
+        # for parameters in lwr.key_weight.parameters():
+        #     print(parameters)
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
 
@@ -302,6 +315,7 @@ if __name__ == '__main__':
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
         writer.add_scalar('Train/label_loss', train_metrics['label_loss'], i + 1)
         writer.add_scalar('Train/kd_loss', train_metrics['kd_loss'], i + 1)
+        writer.add_scalar('Train/teacher_AccTop1', train_metrics['teacher_accTop1'], i + 1)
 
         test_metrics = evaluate(model, test_loader)
         writer.add_scalar('Test/Loss', test_metrics['test_loss'], i + 1)
