@@ -1,3 +1,6 @@
+"""
+nohup python train_ban.py --gpu 0 --model resnet32 --outdir save_ban --num_epochs 150 --n_gen 2 > ban_resnet32.out 2>&1 &
+"""
 import os
 import argparse
 

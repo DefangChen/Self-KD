@@ -1,3 +1,7 @@
+"""
+nohup python train_baseline.py --gpu 0 --model resnet32 --outdir save_baseline > baseline_resnet32.out 2>&1 &
+"""
+
 import argparse
 import logging
 import os
@@ -176,6 +180,7 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, a
             # utils.save_dict_to_json(test_metrics, os.path.join(model_dir, "test_best_metrics.json"))
             # shutil.copyfile(last_path, os.path.join(model_dir, 'save_model', 'best.pth'))
         scheduler.step()
+    logging.info("best_acc is {}".format(best_acc))
     writer.close()
 
 
@@ -223,7 +228,7 @@ if __name__ == '__main__':
         model = getattr(model_cfg, args.model)(num_classes=num_classes)
 
     if torch.cuda.device_count() > 1:
-        model = nn.DataParallel(model, device_ids=[0, 1, 2, 3]).to(device)
+        model = nn.DataParallel(model).to(device)
     else:
         model = model.to(device)
 
@@ -239,5 +244,4 @@ if __name__ == '__main__':
     state['Total params'] = num_params
     params_json_path = os.path.join(model_dir, "parameters.json")  # save parameters
     # utils.save_dict_to_json(state, params_json_path)
-
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))

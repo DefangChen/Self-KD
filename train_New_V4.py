@@ -1,16 +1,21 @@
 """
 采用改为iteration迭代存储key和value
-nohup python train_New_V4.py --gpu 5 --model vgg19 --outdir save_New_V4_3 --factor 8 --atten 3 > New_V4_vgg19_atten3_2.out 3>&1 &
-nohup python train_New_V4.py --gpu 5 --model resnet32 --outdir save_New_V4_3 --factor 8 --atten 3 > New_V4_resnet32_atten3_3.out 2>&1 &
-nohup python train_New_V4.py --gpu 6 --model wide_resnet20_8 --outdir save_New_V4_3 --factor 8 --atten 3 > New_V4_wide_resnet20_8_atten3_3.out 2>&1 &
+nohup python train_New_V4.py --gpu 3 --model vgg19 --outdir save_New_V4_4 --factor 8 --atten 3 > New_V4_vgg19_atten3_2.out 3>&1 &
+nohup python train_New_V4.py --gpu 3 --model resnet32 --outdir save_New_V4_4 --factor 8 --atten 3 > New_V4_resnet32_atten3_3.out 2>&1 &
+nohup python train_New_V4.py --gpu 4 --model wide_resnet20_8 --outdir save_New_V4_4 --factor 8 --atten 3 > New_V4_wide_resnet20_8_atten3_3.out 2>&1 &
+nohup python train_New_V4.py --gpu 0 --model densenetd100k12 --outdir save_New_V4_3 --factor 8 --atten 3 > New_V4_wide_resnet20_8_atten3_3.out 2>&1 &
+nohup python train_New_V4.py --gpu 2 --model wide_resnet20_8 --outdir save_New_V4_k=10 --k 10 --factor 8 --atten 3 > New_V4_wide_resnet20_8_atten3_3.out 2>&1 &
 
-nohup python train_New_V4.py --gpu 3 --tea_avg --model vgg19 --outdir save_New_V4_3 --atten 3 > New_V4_vgg19_avg_1.out 2>&1 &
-nohup python train_New_V4.py --gpu 3 --tea_avg --model resnet32 --outdir save_New_V4_3 --atten 3 > New_V4_resnet32_avg_1.out 2>&1 &
-nohup python train_New_V4.py --gpu 4 --tea_avg --model wide_resnet20_8 --outdir save_New_V4_3 --atten 3 > New_V4_wide_resnet20_8_avg_1.out 2>&1 &
+
+nohup python train_New_V4.py --gpu 3 --tea_avg --model vgg19 --outdir save_New_V4_4 --atten 3 > New_V4_vgg19_avg_1.out 2>&1 &
+nohup python train_New_V4.py --gpu 1 --tea_avg --model resnet32 --outdir save_New_V4_4 --atten 3 > New_V4_resnet32_avg_1.out 2>&1 &
+nohup python train_New_V4.py --gpu 2,3 --tea_avg --model wide_resnet20_8 --outdir save_New_V4_4 --atten 3 > New_V4_wide_resnet20_8_avg_1.out 2>&1 &
+nohup python train_New_V4.py --gpu 3 --tea_avg --model densenetd40k12 --outdir save_New_V4_1 --factor 8 --atten 3 > New_V4_densenetd40k12_atten3_3.out 2>&1 &
 
 nohup python train_New_V4.py --gpu 3 --model vgg19 --outdir save_New_V4_3 --factor 8 --atten 1 > New_V4_vgg19_atten1.out 2>&1 &
 nohup python train_New_V4.py --gpu 3 --model resnet32 --outdir save_New_V4_3 --factor 8 --atten 1 > New_V4_resnet32_atten1.out 2>&1 &
 nohup python train_New_V4.py --gpu 4 --model wide_resnet20_8 --outdir save_New_V4_3 --factor 8 --atten 1 > New_V4_wide_resnet20_8_atten1.out 2>&1 &
+nohup python train_New_V4.py --gpu 6 --model densenetd40k12 --outdir save_New_V4_4 --factor 8 --atten 1 > New_V4_densenetd40k12_atten3_3.out 2>&1 &
 """
 
 import argparse

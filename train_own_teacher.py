@@ -1,3 +1,6 @@
+"""
+nohup python train_own_teacher.py --gpu 1 --arch resnet32 > ownteacher_resnet32_kd.out 2>&1 &
+"""
 import argparse
 import logging
 import os
@@ -13,8 +16,9 @@ from tqdm import tqdm
 import utils
 from dataset import data_loader
 from models.model_cifar import resnet_own
+from tensorboardX import SummaryWriter
 
-parser = argparse.ArgumentParser(description='PyTorch CIFAR10 training')
+parser = argparse.ArgumentParser(description='PyTorch BYOT')
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--gpu', default='4,5', type=str)
 parser.add_argument('--outdir', default='save_own_teacher', type=str)
@@ -126,7 +130,7 @@ def train(train_loader, model, optimizer, criterion):
             middle2_top1.update(middle2_prec1[0].item())
 
             optimizer.zero_grad()
-            total_loss.backward()  # 反向传播
+            total_loss.backward()
             optimizer.step()
 
             t.update()
@@ -196,38 +200,44 @@ def evaluate(test_loader, model, criterion):
     return test_metrics
 
 
-def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, scheduler):
-    start_epoch = 0
+def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, scheduler, writer):
     best_acc = 0.0
 
-    for epoch in range(start_epoch, args.num_epochs):
+    for epoch in range(0, args.num_epochs):
+        writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], epoch + 1)
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
+
         train_metrics = train(train_loader, model, optimizer, criterion)
+        writer.add_scalar('Train/Loss', train_metrics['train_loss'], epoch + 1)
+        writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], epoch + 1)
+        writer.add_scalar('Train/AccTop5', train_metrics['train_accTop5'], epoch + 1)
+
         test_metrics = evaluate(test_loader, model, criterion)
+        writer.add_scalar('Test/Loss', train_metrics['train_loss'], epoch + 1)
+        writer.add_scalar('Test/AccTop1', train_metrics['train_accTop1'], epoch + 1)
+        writer.add_scalar('Test/AccTop5', train_metrics['train_accTop5'], epoch + 1)
 
         last_path = os.path.join(args.outdir, args.arch, "save_model", 'last.pth')
-        torch.save({'state_dict': model.state_dict(),
-                    'optim_dict': optimizer.state_dict(),
-                    'epoch': epoch + 1,
-                    'test_accTop1': test_metrics['test_accTop1'],
-                    'test_accTop5': test_metrics['test_accTop5']}, last_path)
+        # torch.save({'state_dict': model.state_dict(),
+        #             'optim_dict': optimizer.state_dict(),
+        #             'epoch': epoch + 1,
+        #             'test_accTop1': test_metrics['test_accTop1'],
+        #             'test_accTop5': test_metrics['test_accTop5']}, last_path)
 
         test_acc = test_metrics['test_accTop1']
         is_best = (test_acc >= best_acc)
         if is_best:
             logging.info("- Found better accuracy")
             best_acc = test_acc
-            test_metrics['epoch'] = epoch + 1
-            utils.save_dict_to_json(test_metrics,
-                                    os.path.join(args.outdir, args.arch, "save_model", "test_best_metrics.json"))
-            shutil.copyfile(last_path, os.path.join(args.outdir, args.arch, "save_model", 'best.pth'))
+            # test_metrics['epoch'] = epoch + 1
+            # utils.save_dict_to_json(test_metrics,
+            #                         os.path.join(args.outdir, args.arch, "save_model", "test_best_metrics.json"))
+            # shutil.copyfile(last_path, os.path.join(args.outdir, args.arch, "save_model", 'best.pth'))
         scheduler.step()
 
 
 if __name__ == '__main__':
     begin_time = time.time()
-    utils.solve_dir(args.outdir)
-    utils.solve_dir(os.path.join(args.outdir, args.arch))
     utils.solve_dir(os.path.join(args.outdir, args.arch, 'save_model'))
     utils.solve_dir(os.path.join(args.outdir, args.arch, 'log'))
 
@@ -255,9 +265,9 @@ if __name__ == '__main__':
     logging.info("- Done.")
 
     if args.arch == "resnet32":
-        model = resnet_own2.resnet32(num_classes=num_classes)
+        model = resnet_own.resnet32(num_classes=num_classes)
     elif args.arch == "wide_resnet20_8":
-        model = resnet_own2.wide_resnet20_8(num_classes=num_classes)
+        model = resnet_own.wide_resnet20_8(num_classes=num_classes)
 
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model).to(device)
@@ -278,11 +288,13 @@ if __name__ == '__main__':
 
     num_params = (sum(p.numel() for p in model.parameters()) / 1000000.0)
     logging.info('Total params: %.2fM' % num_params)
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch))
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
-    scheduler = MultiStepLR(optimizer, milestones=[0.5*args.num_epochs, 0.75*args.num_epochs], gamma=args.gamma, verbose=True)
+    scheduler = MultiStepLR(optimizer, milestones=[0.5 * args.num_epochs, 0.75 * args.num_epochs], gamma=args.gamma,
+                            verbose=True)
 
     logging.info("Starting training for {} epoch(s)".format(args.num_epochs))
-    train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, scheduler)
+    train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, scheduler, writer)
     logging.info('Total time: {:.2f} minutes'.format((time.time() - begin_time) / 60.0))

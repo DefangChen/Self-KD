@@ -1,7 +1,7 @@
 ##对比方法：
 #1.baseline:(finished)
 nohup python train_baseline.py --gpu 0 --model vgg19 --outdir save_baseline > baseline_vgg19.out 2>&1 &
-nohup python train_baseline.py --gpu 2 --model resnet32 --outdir save_baseline_test_ban --num_epochs 3000 > baseline_resnet32.out 2>&1 &
+nohup python train_baseline.py --gpu 2 --model resnet32 --outdir save_baseline_test_ban > baseline_resnet32.out 2>&1 &
 nohup python train_baseline.py --gpu 2 --model wide_resnet20_8 --outdir save_baseline > baseline_wide_resnet20_8.out 2>&1 &
 
 #2.LWR:(finished)

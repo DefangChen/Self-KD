@@ -1,3 +1,6 @@
+"""
+nohup python train_SD.py --gpu 1 --arch resnet32 > SD_resnet32.out 2>&1 &
+"""
 import argparse
 import copy
 import logging
@@ -162,8 +165,6 @@ if __name__ == '__main__':
     args.lambda_s = 1 + 1 / args.T
     args.lambda_t = 1
 
-    utils.solve_dir(args.outdir)
-    utils.solve_dir(os.path.join(args.outdir, args.arch))
     utils.solve_dir(os.path.join(args.outdir, args.arch, 'save_snapshot'))
     utils.solve_dir(os.path.join(args.outdir, args.arch, 'log'))
 
@@ -214,8 +215,7 @@ if __name__ == '__main__':
     logging.info('Total params: %.2fM' % num_params)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=args.init_lr, momentum=args.momentum, nesterov=True,
-                          weight_decay=args.wd)
+    optimizer = optim.SGD(model.parameters(), lr=args.init_lr, momentum=args.momentum, nesterov=True, weight_decay=args.wd)
     teacher = None
     best_acc = 0
 
@@ -248,13 +248,13 @@ if __name__ == '__main__':
         if teacher is not None:
             save_dic['teacher_dict'] = teacher.state_dict()
         last_path = os.path.join(args.outdir, args.arch, 'save_snapshot', 'last.pth')
-        torch.save(save_dic, last_path)
+        # torch.save(save_dic, last_path)
 
         if test_acc >= best_acc:
             logging.info("- Found better accuracy")
             best_acc = test_acc
             best_path = os.path.join(args.outdir, args.arch, 'save_snapshot', 'best.pth')
-            torch.save(save_dic, best_path)
+            # torch.save(save_dic, best_path)
 
     writer.close()
     print("best_acc is ", best_acc)

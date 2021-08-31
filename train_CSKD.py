@@ -1,3 +1,7 @@
+"""
+nohup python train_CSKD.py --gpu 0 --model resnet32 > CSKD_resnet32.out 2>&1 &
+"""
+
 import argparse
 import logging
 import os
