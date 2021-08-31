@@ -213,9 +213,9 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, s
         writer.add_scalar('Train/AccTop5', train_metrics['train_accTop5'], epoch + 1)
 
         test_metrics = evaluate(test_loader, model, criterion)
-        writer.add_scalar('Test/Loss', train_metrics['train_loss'], epoch + 1)
-        writer.add_scalar('Test/AccTop1', train_metrics['train_accTop1'], epoch + 1)
-        writer.add_scalar('Test/AccTop5', train_metrics['train_accTop5'], epoch + 1)
+        writer.add_scalar('Test/Loss', test_metrics['test_loss'], epoch + 1)
+        writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], epoch + 1)
+        writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], epoch + 1)
 
         last_path = os.path.join(args.outdir, args.arch, "save_model", 'last.pth')
         # torch.save({'state_dict': model.state_dict(),

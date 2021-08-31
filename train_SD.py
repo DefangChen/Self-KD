@@ -1,5 +1,5 @@
 """
-nohup python train_SD.py --gpu 1 --arch resnet32 > SD_resnet32.out 2>&1 &
+nohup python train_SD.py --gpu 3 --arch resnet32 --outdir save_SD > SD_resnet32.out 2>&1 &
 """
 import argparse
 import copy
@@ -21,7 +21,7 @@ from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser(description='PyTorch Snapshot Ensemble')
 parser.add_argument('--gpu', default='0', type=str)
-parser.add_argument('--outdir', default='save_SD_V4', type=str)
+parser.add_argument('--outdir', default='save_SD', type=str)
 parser.add_argument('--arch', type=str, default='resnet32',
                     help='models architecture')
 parser.add_argument('--dataset', '-d', type=str, default='CIFAR100')
@@ -230,7 +230,7 @@ if __name__ == '__main__':
 
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
-        writer.add_scalar('Train/KD_Loss', train_metrics['loss_kd'], i + 1)
+        writer.add_scalar('Train/kd_Loss', train_metrics['loss_kd'], i + 1)
 
         test_metrics = evaluate(test_loader, model, criterion)
 

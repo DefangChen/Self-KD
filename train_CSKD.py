@@ -42,6 +42,7 @@ if torch.cuda.is_available():
 else:
     device = "cpu"
 
+
 # 与model的用法相同，重载了forward函数
 class KDLoss(nn.Module):
     def __init__(self, temp_factor):
@@ -62,6 +63,7 @@ def train(train_loader, model, optimizer, criterion1, criterion_kd):
     accTop1_avg = utils.AverageMeter()
     accTop5_avg = utils.AverageMeter()
     loss_kd = utils.AverageMeter()
+    label_loss = utils.AverageMeter()
     end = time.time()
 
     with tqdm(total=len(train_loader)) as t:
@@ -74,6 +76,7 @@ def train(train_loader, model, optimizer, criterion1, criterion_kd):
             outputs = model(train_batch[:batch_size // 2])
 
             loss = criterion1(outputs, targets_)
+            label_loss.update(loss.item())
 
             with torch.no_grad():
                 outputs_cls = model(train_batch[batch_size // 2:])
@@ -84,7 +87,7 @@ def train(train_loader, model, optimizer, criterion1, criterion_kd):
             loss.backward()
             optimizer.step()
 
-            loss_kd.update(cls_loss.item())
+            loss_kd.update(args.lamda * cls_loss.item())
             loss_avg.update(loss.item())
             metrics = utils.accuracy(outputs, targets_, topk=(1, 5))  # metircs代表指标
             accTop1_avg.update(metrics[0].item())
@@ -94,6 +97,7 @@ def train(train_loader, model, optimizer, criterion1, criterion_kd):
 
     train_metrics = {'train_loss': loss_avg.value(),
                      'loss_kd': loss_kd.value(),
+                     'label_loss': label_loss.value(),
                      'train_accTop1': accTop1_avg.value(),
                      'train_accTop5': accTop5_avg.value(),
                      'time': time.time() - end}
@@ -192,7 +196,7 @@ if __name__ == '__main__':
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.schedule, gamma=0.1)
 
     best_acc = 0
-    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.arch))
+    writer = SummaryWriter(log_dir=os.path.join(args.outdir, args.model))
     for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
