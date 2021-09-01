@@ -152,9 +152,9 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, t
         writer.add_scalar('Train/gen' + str(gen) + '/label_loss', train_metrics['label_loss'], epoch + 1)
 
         test_metrics = evaluate(test_loader, model, criterion)
-        writer.add_scalar('Test/Loss', train_metrics['test_loss'], epoch + 1 + gen * args.num_epochs)
-        writer.add_scalar('Test/AccTop1', train_metrics['test_accTop1'], epoch + 1 + gen * args.num_epochs)
-        writer.add_scalar('Test/AccTop5', train_metrics['test_accTop5'], epoch + 1 + gen * args.num_epochs)
+        writer.add_scalar('Test/Loss', test_metrics['test_loss'], epoch + 1 + gen * args.num_epochs)
+        writer.add_scalar('Test/AccTop1', test_metrics['test_accTop1'], epoch + 1 + gen * args.num_epochs)
+        writer.add_scalar('Test/AccTop5', test_metrics['test_accTop5'], epoch + 1 + gen * args.num_epochs)
         writer.add_scalar('Test/gen' + str(gen) + '/Loss', test_metrics['test_loss'], epoch + 1)
         writer.add_scalar('Test/gen' + str(gen) + '/AccTop1', test_metrics['test_accTop1'], epoch + 1)
         writer.add_scalar('Test/gen' + str(gen) + '/AccTop5', test_metrics['test_accTop5'], epoch + 1)

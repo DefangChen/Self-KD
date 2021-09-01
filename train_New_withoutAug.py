@@ -80,20 +80,15 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
 
     with tqdm(total=len(train_loader)) as t:
         for _, (img, labels_batch) in enumerate(train_loader):
-            img_stu, img_teacher = img[0], img[1]
-            img_stu = img_stu.to(device)
+            img=img.to(device)
             labels_batch = labels_batch.to(device)
 
-            student_query, output = model(img_stu)
+            student_query, output = model(img)
             student_query = student_query.detach()
             student_query = query_weight(student_query)  # Bx8
             student_query = student_query[:, None, :]  # Bx1x8
 
             loss1 = criterion(output, labels_batch)
-
-            train_batch_tea = []
-            for i in range(len(teachers)):
-                train_batch_tea.append(img_teacher[i].to(device))
 
             if len(teachers) != 0:
                 for teacher in teachers:
