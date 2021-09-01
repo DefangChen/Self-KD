@@ -1,5 +1,6 @@
 """
 nohup python train_own_teacher.py --gpu 1 --arch resnet32 > ownteacher_resnet32_kd.out 2>&1 &
+nohup python train_own_teacher.py --gpu 1 --arch wide_resnet20_8 > ownteacher_resnet32_kd.out 2>&1 &
 """
 import argparse
 import logging

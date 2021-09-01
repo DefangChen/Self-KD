@@ -1,5 +1,6 @@
 """
 nohup python train_CSKD.py --gpu 0 --model resnet32 > CSKD_resnet32.out 2>&1 &
+nohup python train_CSKD.py --gpu 0 --model wide_resnet20_8 > CSKD_resnet32.out 2>&1 &
 """
 
 import argparse

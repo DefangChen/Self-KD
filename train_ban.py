@@ -1,5 +1,6 @@
 """
 nohup python train_ban.py --gpu 0 --model resnet32 --outdir save_ban --num_epochs 150 --n_gen 2 > ban_resnet32.out 2>&1 &
+nohup python train_ban.py --gpu 0 --model wide_resnet20_8 --outdir save_ban --num_epochs 150 --n_gen 2 > ban_resnet32.out 2>&1 &
 """
 import os
 import argparse
@@ -28,7 +29,7 @@ parser.add_argument("--num_epochs", type=int, default=200)
 parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--n_gen", type=int, default=10)
 parser.add_argument("--dataset", type=str, default="CIFAR100")
-parser.add_argument("--outdir", type=str, default="save_ban")
+parser.add_argument("--outdir", type=str, default="save_ban_test")
 parser.add_argument("--model", type=str, default="resnet32")
 parser.add_argument("--wd", type=float, default=1e-4)
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
@@ -288,7 +289,7 @@ if __name__ == '__main__':
             qq = train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, teacher_model, gen,
                                     scheduler)
             if qq > final_best_acc:
-                qq = final_best_acc
+                final_best_acc = qq
 
             teacher_model = generate_model(model_folder, num_classes)
             last_model_weight = os.path.join(args.outdir, args.model, ss, 'save_gen_model',

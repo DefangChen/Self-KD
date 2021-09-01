@@ -1,5 +1,6 @@
 """
 nohup python train_New.py --gpu 2 --arch resnet32 --outdir save_New_withoutAug --factor 8 --atten 3 > New_withoutAug_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_withoutAug --factor 8 --atten 3 > New_withoutAug_resnet32_atten3.out 2>&1 &
 """
 
 import argparse

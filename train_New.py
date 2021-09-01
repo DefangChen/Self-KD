@@ -1,7 +1,6 @@
 """
-nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
-nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New --factor 8 --atten 5 > New_resnet32_atten5.out 2>&1 &
-nohup python train_New.py --gpu 2 --arch resnet32 --outdir save_New --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New --factor 8 --atten 3 > New_resnet32_atten1.out 2>&1 &
+nohup python train_New.py --gpu 3 --arch wide_resnet20_8 --outdir save_New --factor 8 --atten 3 > New_resnet32_atten5.out 2>&1 &
 改为将logits加权
 """
 

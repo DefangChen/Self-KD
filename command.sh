@@ -94,3 +94,13 @@ nohup python change_LWR_V1.py --gpu 4 --model wide_resnet20_8 --outdir save_chan
 nohup python train_New2.py --gpu 0 --arch vgg19 > New2_vgg19.out 2>&1 &
 nohup python train_New2.py --gpu 2 --arch resnet32 --outdir save_New2_KD --sd_KD > New2_resnet32.out 2>&1 &
 nohup python train_New2.py --gpu 1 --arch wide_resnet20_8 > New2_wide_resnet20_8.out 2>&1 &
+
+
+nohup python train_New.py --gpu 0 --arch wide_resnet20_8 --outdir save_New --factor 8 --atten 5 > New_resnet32_atten5.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch wide_resnet20_8 --outdir save_New --factor 8 --atten 1 > New_resnet32_atten5.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch wide_resnet20_8 --outdir save_New --factor 8 --atten 3 > New_resnet32_atten5.out 2>&1 &
+nohup python train_ban.py --gpu 1 --model wide_resnet20_8 --outdir save_ban --num_epochs 150 --n_gen 2 > ban_resnet32.out 2>&1 &
+nohup python train_CSKD.py --gpu 2 --model wide_resnet20_8 > CSKD_resnet32.out 2>&1 &
+nohup python train_own_teacher.py --gpu 2 --arch wide_resnet20_8 > ownteacher_resnet32_kd.out 2>&1 &
+nohup python train_SD.py --gpu 3 --arch wide_resnet20_8 --outdir save_SD > SD_resnet32.out 2>&1 &
+nohup python train_New.py --gpu 3 --arch wide_resnet20_8 --outdir save_New_withoutAug --factor 8 --atten 3 > New_withoutAug_resnet32_atten3.out 2>&1 &

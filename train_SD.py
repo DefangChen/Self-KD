@@ -1,5 +1,6 @@
 """
 nohup python train_SD.py --gpu 3 --arch resnet32 --outdir save_SD > SD_resnet32.out 2>&1 &
+nohup python train_SD.py --gpu 3 --arch wide_resnet20_8 --outdir save_SD > SD_resnet32.out 2>&1 &
 """
 import argparse
 import copy
