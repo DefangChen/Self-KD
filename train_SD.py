@@ -230,7 +230,7 @@ if __name__ == '__main__':
 
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
-        writer.add_scalar('Train/kd_Loss', train_metrics['loss_kd'], i + 1)
+        writer.add_scalar('Train/kd_loss', train_metrics['loss_kd'], i + 1)
 
         test_metrics = evaluate(test_loader, model, criterion)
 

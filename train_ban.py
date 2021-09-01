@@ -141,12 +141,20 @@ def train_and_evaluate(model, train_loader, test_loader, optimizer, criterion, t
         logging.info("Epoch {}/{}".format(epoch + 1, args.num_epochs))
 
         train_metrics = train(train_loader, model, optimizer, criterion, teacher_model, gen)
+        writer.add_scalar('Train/Loss', train_metrics['train_loss'], epoch + 1 + gen * args.num_epochs)
+        writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], epoch + 1 + gen * args.num_epochs)
+        writer.add_scalar('Train/kd_loss', train_metrics['loss_kd'], epoch + 1 + gen * args.num_epochs)
+        writer.add_scalar('Train/label_loss', train_metrics['train_loss'], epoch + 1 + gen * args.num_epochs)
+
         writer.add_scalar('Train/gen' + str(gen) + '/Loss', train_metrics['train_loss'], epoch + 1)
         writer.add_scalar('Train/gen' + str(gen) + '/AccTop1', train_metrics['train_accTop1'], epoch + 1)
         writer.add_scalar('Train/gen' + str(gen) + '/kd_loss', train_metrics['loss_kd'], epoch + 1)
         writer.add_scalar('Train/gen' + str(gen) + '/label_loss', train_metrics['label_loss'], epoch + 1)
 
         test_metrics = evaluate(test_loader, model, criterion)
+        writer.add_scalar('Test/Loss', train_metrics['test_loss'], epoch + 1 + gen * args.num_epochs)
+        writer.add_scalar('Test/AccTop1', train_metrics['test_accTop1'], epoch + 1 + gen * args.num_epochs)
+        writer.add_scalar('Test/AccTop5', train_metrics['test_accTop5'], epoch + 1 + gen * args.num_epochs)
         writer.add_scalar('Test/gen' + str(gen) + '/Loss', test_metrics['test_loss'], epoch + 1)
         writer.add_scalar('Test/gen' + str(gen) + '/AccTop1', test_metrics['test_accTop1'], epoch + 1)
         writer.add_scalar('Test/gen' + str(gen) + '/AccTop5', test_metrics['test_accTop5'], epoch + 1)

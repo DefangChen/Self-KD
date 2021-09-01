@@ -200,9 +200,11 @@ if __name__ == '__main__':
     for i in range(args.num_epochs):
         logging.info("Epoch {}/{}".format(i + 1, args.num_epochs))
         writer.add_scalar('Learning_Rate', optimizer.param_groups[0]['lr'], i + 1)
+
         train_metrics = train(train_loader, model, optimizer, criterion1, criterion2)
         writer.add_scalar('Train/Loss', train_metrics['train_loss'], i + 1)
         writer.add_scalar('Train/AccTop1', train_metrics['train_accTop1'], i + 1)
+        writer.add_scalar('Train/AccTop5', train_metrics['train_accTop5'], i + 1)
         writer.add_scalar('Train/kd_loss', train_metrics['loss_kd'], i + 1)
         writer.add_scalar('Train/label_loss', train_metrics['label_loss'], i + 1)
 
