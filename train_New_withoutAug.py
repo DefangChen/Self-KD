@@ -1,5 +1,5 @@
 """
-nohup python train_New.py --gpu 2 --arch resnet32 --outdir save_New --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
+nohup python train_New.py --gpu 2 --arch resnet32 --outdir save_New_withoutAug --factor 8 --atten 3 > New_withoutAug_resnet32_atten3.out 2>&1 &
 """
 
 import argparse
@@ -93,7 +93,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
             if len(teachers) != 0:
                 for teacher in teachers:
                     teacher.eval()
-                teacher_keys, teacher_outputs = teachers[0](train_batch_tea[0])
+                teacher_keys, teacher_outputs = teachers[0](img)
                 teacher_keys = teacher_keys.detach()
                 teacher_outputs = teacher_outputs.detach()
                 teacher_keys = key_weight(teacher_keys)  # Bx8
@@ -101,8 +101,7 @@ def train(train_loader, model, optimizer, criterion, teachers, T, query_weight, 
                 teacher_outputs = teacher_outputs[:, None, :]  # Bx1x100
                 for i in range(1, len(teachers)):
                     teacher = teachers[i]
-                    train_batch = train_batch_tea[i]
-                    temp1, temp2 = teacher(train_batch)
+                    temp1, temp2 = teacher(img)
                     temp1 = temp1.detach()
                     temp2 = temp2.detach()
                     temp1 = key_weight(temp1)

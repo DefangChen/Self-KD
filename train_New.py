@@ -1,15 +1,7 @@
 """
-nohup python train_New.py --gpu 0 --arch vgg19 --outdir save_New_V2_6 --factor 8 --atten 3 > New_vgg19_atten3.out 2>&1 &
+nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
+nohup python train_New.py --gpu 1 --arch resnet32 --outdir save_New --factor 8 --atten 5 > New_resnet32_atten5.out 2>&1 &
 nohup python train_New.py --gpu 2 --arch resnet32 --outdir save_New --factor 8 --atten 3 > New_resnet32_atten3.out 2>&1 &
-nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_V2_6 --factor 8 --atten 3 > New_wide_resnet20_8_atten3.out 2>&1 &
-
-nohup python train_New.py --gpu 1 --arch vgg19 --outdir save_New_V2_1 --factor 8 --atten 1 > New_vgg19_atten1.out 2>&1 &
-nohup python train_New.py --gpu 0 --arch resnet32 --outdir save_New_V2_1 --factor 8 --atten 1 > New_resnet32_atten1.out 2>&1 &
-nohup python train_New.py --gpu 2 --arch wide_resnet20_8 --outdir save_New_V2_1 --factor 8 --atten 1 > New_wide_resnet20_8_atten1.out 2>&1 &
-
-nohup python train_New.py --gpu 6 --tea_avg --arch vgg19 --outdir save_New_V2_3 --atten 3 > New_vgg19_avg.out 2>&1 &
-nohup python train_New.py --gpu 4 --tea_avg --arch resnet32 --outdir save_New_V2_3 --atten 3 > New_resnet32_avg.out 2>&1 &
-nohup python train_New.py --gpu 6 --tea_avg --arch wide_resnet20_8 --outdir save_New_V2_3 --atten 3 > New_wide_resnet20_8_avg.out 2>&1 &
 改为将logits加权
 """
 
@@ -229,7 +221,8 @@ if __name__ == '__main__':
         num_classes = 1000
         model_folder = "model_imagenet"
         root = './Data'
-    train_loader, test_loader = dataloader_New.dataloader(data_name=args.dataset, batch_size=args.batch_size, root=root)
+    train_loader, test_loader = dataloader_New.dataloader(data_name=args.dataset, batch_size=args.batch_size, root=root,
+                                                          num=args.atten)
     logging.info("- Done.")
 
     model_fd = getattr(models, model_folder)
